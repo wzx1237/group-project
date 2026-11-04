@@ -82,6 +82,13 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 - **Output:** ContextManager[psycopg.Connection[dict[str, Any]]].
 - **Functionality:** Borrow a database connection that commits on success and rolls back on an exception.
 
+### `transaction`
+
+- **Module:** `database.database`
+- **Input:** `No arguments`
+- **Output:** Iterator['Database']
+- **Functionality:** Compose existing methods into one commit; keep this scope in one thread.
+
 ### `close`
 
 - **Module:** `database.database`
@@ -179,6 +186,18 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 - **Input:** `record_ID: int, label_ID: int, *, exam_ID: int`
 - **Output:** bool.
 - **Functionality:** Physically delete one selected label and recalculate the score, including zero after the last removal.
+
+### `validate_graders`
+- **Module:** `database.decision`
+- **Input:** `cursor, graders: List[str], *, exam_ID: int`
+- **Output:** None.
+- **Functionality:** check whether this grader are assigned to this exam of thsi course
+
+### `recalculate_score`
+- **Module:** `database.decision`
+- **Input:** `cursor, record_ID: int, exam_ID: int`
+- **Output:** None.
+- **Functionality:** recalculate the scores of some decision
 
 ### `add_exam`
 
