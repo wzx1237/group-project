@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+next-env.d.ts
+*.tsbuildinfo
+
+# Written by the backend while it runs (student data)
+# Going to be replaced by a real database as we develop
+/data/db.json
+/data/db.tmp
+/data/uploads/
+/data/submissions/
+
+# OS
+.DS_Store
+
+# SVN stuff we dont want in GitLab
+/.svn/
+/10-22-demo/
+/backend v1.2/
+/exam-distribution/
+/TA UI v1.0/
+/TA UI v1.1/
+/*.docx
+/*.pdf
+/*.txt
+/*.xlsx

@@ -1,0 +1,37 @@
+{
+  "name": "gradeflow-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React frontend for Gradelow",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
+    "next": "^16.4.3",
+    "pdfjs-dist": "^4.4.168",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^9.0.1",
+    "react-pdf": "^9.1.0",
+    "recharts": "^2.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.3",
+    "eslint-plugin-jsx-a11y": "^6.10.0",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.3"
+  }
+}

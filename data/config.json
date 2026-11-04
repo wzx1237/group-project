@@ -1,0 +1,32 @@
+{
+  "course": {
+    "code": "CMSC250",
+    "term": "Fall 2026",
+    "instructor": "Larry Herman"
+  },
+  "assignments": [
+    {"id": "midterm-1",  "kind": "exam",     "title": "Midterm 1",  "short": "M1",    "due": "2026-09-30"},
+    {"id": "midterm-2",  "kind": "exam",     "title": "Midterm 2",  "short": "M2",    "due": "2026-11-04"},
+    {"id": "final",      "kind": "exam",     "title": "Final Exam", "short": "Final", "due": "2026-12-16"},
+    {"id": "quiz-1",     "kind": "quiz",     "title": "Quiz 1",     "short": "Q1",    "due": "2026-09-16"},
+    {"id": "quiz-2",     "kind": "quiz",     "title": "Quiz 2",     "short": "Q2",    "due": "2026-10-07"},
+    {"id": "quiz-3",     "kind": "quiz",     "title": "Quiz 3",     "short": "Q3",    "due": "2026-10-28"},
+    {"id": "quiz-4",     "kind": "quiz",     "title": "Quiz 4",     "short": "Q4",    "due": "2026-11-18"},
+    {"id": "quiz-5",     "kind": "quiz",     "title": "Quiz 5",     "short": "Q5",    "due": "2026-12-09"},
+    {"id": "homework-1", "kind": "homework", "title": "Homework 1", "short": "HW1",   "due": "2026-09-09"},
+    {"id": "homework-2", "kind": "homework", "title": "Homework 2", "short": "HW2",   "due": "2026-09-23"},
+    {"id": "homework-3", "kind": "homework", "title": "Homework 3", "short": "HW3",   "due": "2026-10-14"},
+    {"id": "homework-4", "kind": "homework", "title": "Homework 4", "short": "HW4",   "due": "2026-11-11"},
+    {"id": "homework-5", "kind": "homework", "title": "Homework 5", "short": "HW5",   "due": "2026-12-02"}
+  ],
+  "rosters": {
+    "students": "rosters/class-roster-source.csv",
+    "staff": "rosters/class-roster-ta-source.csv"
+  },
+  "uid_model": "models/uid/alphanumeric_model.onnx",
+  "max_upload_mb": 200,
+  "cover_threshold": 0.55,
+  "uid_min_confidence": 0.60,
+  "uid_min_margin": 0.20,
+  "suggestion_min_digits": 6
+}

@@ -1,0 +1,47 @@
+.action {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: #fde7e5;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.signIn {
+  width: 100%;
+}
+
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+.shield {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.signInIcon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}

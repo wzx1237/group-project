@@ -1,0 +1,28 @@
+/* Colors from the Figma file. */
+:root {
+  color-scheme: light;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --bg: #f2f4f4;
+  --card: #ffffff;
+  --border: #dfe5e5;
+  --fg: #202c30;
+  --fg-secondary: #435257;
+  --muted: #718084;
+  --accent: #16756b;
+  --accent-hover: #12655c;
+  --accent-soft: #eaf5f2;
+  --surface-subtle: #f7f9f9;
+  --surface-disabled: #e5e9e9;
+  --row-highlight: #f2f8f6;
+  --warning: #8a6029;
+  --warning-soft: #fbf2e5;
+  --danger: #b3261e;
+  --danger-soft: #fde7e5;
+  --radius: 5px;
+  --radius-card: 8px;
+}
+
+body { font-family: var(--font-inter), system-ui, sans-serif; }
+
+.skip-to-content-link { position: absolute; left: -9999px; }
+.skip-to-content-link:focus { left: 16px; top: 16px; z-index: 10; padding: 8px 12px; background: var(--card); }

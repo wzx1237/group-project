@@ -1,0 +1,103 @@
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: 24px 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 8px 12px rgba(32, 44, 48, 0.06);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--accent);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--fg-secondary);
+}
+
+.notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.divider {
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--border);
+}
+
+.studentNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--fg-secondary);
+}
+
+.studentNote p {
+  margin: 0;
+}
+
+.icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}

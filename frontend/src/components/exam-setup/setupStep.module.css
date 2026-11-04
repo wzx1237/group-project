@@ -1,0 +1,66 @@
+.steps {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+}
+
+.marker {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.marker:disabled {
+  cursor: default;
+}
+
+.marker.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.marker.done {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.label {
+  margin: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.labelMuted {
+  margin: 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.connector {
+  width: 28px;
+  height: 1px;
+  margin-right: 10px;
+  background: var(--border);
+}

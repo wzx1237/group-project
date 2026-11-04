@@ -1,0 +1,122 @@
+:root {
+  --bg: #f6faf7;
+  --fg: #1a211c;
+  --muted: #667269;
+  --card: #fff;
+  --border: #d9e5dc;
+  --accent: #2e7d4f;
+  --accent-soft: #e6f2ea;
+  --danger: #b3261e;
+  --submitted: #8e6bbf;
+  --grading: #f2c94c;
+  --graded: #3aa76d;
+  --missing: #d9534f;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141a16;
+    --fg: #e8eee9;
+    --muted: #97a39b;
+    --card: #1c241f;
+    --border: #2f3b33;
+    --accent: #5fc28a;
+    --accent-soft: #223329;
+    --danger: #ff8a80;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, sans-serif;
+}
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { margin: 0 0 4px; font-size: 1.8rem; }
+h1 span { color: var(--muted); font-weight: 400; }
+h2 { margin: 32px 0 8px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.course-header p { margin: 0; color: var(--muted); }
+a { color: inherit; }
+.assignment-list, .upload-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--card); overflow: hidden; }
+.assignment-list li + li, .upload-list li + li { border-top: 1px solid var(--border); }
+.assignment-list a, .upload-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; text-decoration: none; }
+.assignment-list a:hover { background: var(--bg); }
+.count, .empty { color: var(--muted); font-size: 0.9rem; }
+.back { display: inline-block; margin-bottom: 16px; color: var(--muted); text-decoration: none; }
+.upload { display: block; padding: 24px; text-align: center; border: 2px dashed var(--border); border-radius: 8px; background: var(--card); cursor: pointer; }
+.upload:hover { border-color: var(--accent); }
+.upload.busy { opacity: 0.6; cursor: wait; }
+.upload input { display: none; }
+.status { padding: 16px; }
+.error { color: var(--danger); }
+@media (max-width: 480px) {
+  .assignment-list a, .upload-list li { flex-direction: column; gap: 0; }
+}
+
+.topbar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--card); border-bottom: 2px solid var(--accent); }
+.brand { margin-right: auto; font-weight: 700; color: var(--accent); text-decoration: none; }
+.btn { padding: 6px 14px; border: 1px solid var(--accent); border-radius: 6px; color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.btn:hover, .btn.active { background: var(--accent); color: var(--card); }
+.sub { margin: 0; color: var(--muted); }
+.role { margin-left: 6px; padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 0.8rem; }
+.box { display: inline-block; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: 4px; background: transparent; vertical-align: middle; }
+.box.submitted { background: var(--submitted); border-color: var(--submitted); }
+.box.grading { background: var(--grading); border-color: var(--grading); }
+.box.graded { background: var(--graded); border-color: var(--graded); }
+.box.missing { background: var(--missing); border-color: var(--missing); }
+.key { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0 0; padding: 12px 16px; list-style: none; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 0.9rem; }
+.key .box { width: 16px; height: 16px; margin-right: 4px; }
+.student-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.student { padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.student-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.boxes { display: flex; flex-wrap: wrap; gap: 6px; }
+.cell { display: flex; flex-direction: column; align-items: center; width: 40px; }
+.cell-label { margin-top: 2px; font-size: 0.7rem; color: var(--muted); }
+.sort { display: flex; align-items: center; gap: 6px; margin-top: 24px; color: var(--muted); font-size: 0.9rem; }
+.sort button { padding: 4px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+.sort button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.sort + .assignment-list { margin-top: 12px; }
+.row-meta { display: flex; align-items: center; gap: 12px; }
+.role.kind-exam { background: #f3e8ff; color: #6b3fa0; }
+.role.kind-quiz { background: #fff4d6; color: #8a6400; }
+.role.kind-homework { background: var(--accent-soft); color: var(--accent); }
+.upload-card { display: block !important; }
+.upload-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.badge { flex-shrink: 0; padding: 2px 10px; border-radius: 10px; font-size: 0.8rem; background: var(--accent-soft); color: var(--accent); }
+.badge.processing, .badge.uploaded { background: #fff4d6; color: #8a6400; }
+.badge.failed { background: #fde7e5; color: var(--danger); }
+.pdf-actions-row { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+.pdf-actions { display: inline-flex; gap: 10px; align-items: center; }
+.pdf-actions a:not([data-button]), .upload-card button:not([data-button]) { color: var(--accent); font: inherit; font-size: 0.9rem; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px; cursor: pointer; text-decoration: none; }
+.pdf-actions a:not([data-button]):hover, .upload-card button:not([data-button]):hover { border-color: var(--accent); }
+.submission-list { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--border); }
+.submission-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; }
+.submission-list li + li { border-top: 1px solid var(--border); }
+.warn { color: var(--danger); font-size: 0.85rem; }
+.viewer { width: 100%; height: 70vh; margin-top: 12px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.upload-head-right { display: flex; align-items: center; gap: 8px; }
+.upload-card .icon-btn { display: inline-flex; padding: 4px 6px; color: var(--danger); }
+.upload-card .icon-btn:hover:not(:disabled) { border-color: var(--danger); }
+.upload-card .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.upload-card .primary { background: var(--accent); color: var(--card); border-color: var(--accent); }
+.submission-list li.submission { display: block; }
+.submission-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.matched { color: var(--accent); font-size: 0.9rem; }
+.assign-panel { margin: 10px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); display: grid; gap: 10px; }
+.uid-read img { width: 100%; border: 1px solid var(--border); border-radius: 4px; background: #fff; display: block; margin-bottom: 4px; }
+.uid-read code { font-size: 1rem; letter-spacing: 0.1em; }
+.suggestion { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--accent-soft); }
+.search { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg); font: inherit; }
+.pick-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
+.pick-list li { display: flex !important; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px !important; }
+.pick-list li + li { border-top: 1px solid var(--border); }
+.note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+.roster-rows li { align-items: center; }
+.roster-name, .roster-right { display: flex; align-items: center; gap: 10px; }
+.roster-right a { color: var(--accent); }
+.confirm-delete { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--danger); border-radius: 6px; background: var(--card); font-size: 0.9rem; }
+.upload-card .danger { background: var(--danger); border-color: var(--danger); color: var(--card); }
+.upload-card .unassign { color: var(--danger); }
+.upload-card .unassign:hover { border-color: var(--danger); }
