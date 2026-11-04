@@ -18,9 +18,9 @@ def add_staff(url: str, directory_id: str, name: str, role: str, email: str | No
     course = config.load()["course"]
     with psycopg.connect(url) as conn:
         conn.execute(
-            """INSERT INTO staff (directory_id, name, email, role) VALUES (%s, %s, %s, %s)
-               ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role""",
-            (directory_id, name, email, role),
+            """INSERT INTO staff (directory_id, name, email) VALUES (%s, %s, %s)
+               ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email""",
+            (directory_id, name, email),
         )
         conn.execute(
             "INSERT INTO course (code, term) VALUES (%s, %s) ON CONFLICT DO NOTHING",
@@ -30,8 +30,8 @@ def add_staff(url: str, directory_id: str, name: str, role: str, email: str | No
             "SELECT course_id FROM course WHERE code = %s AND term = %s", (course["code"], course["term"])
         ).fetchone()
         conn.execute(
-            "INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (course_id, directory_id),
+            "INSERT INTO course_staff (course_id, directory_id, role) VALUES (%s, %s, %s) ON CONFLICT (course_id, directory_id) DO UPDATE SET role = EXCLUDED.role",
+            (course_id, directory_id, role),
         )
     print(f"Added {directory_id} ({role}) to {course['code']} {course['term']}")
 
