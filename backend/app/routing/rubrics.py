@@ -1,103 +1,48 @@
+"""Rubric reads and adding a shared label with atomic regrade propagation."""
+from decimal import Decimal
+from typing import Annotated, Literal
 
-from typing import Literal
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from app.grading.service import amount
+from app.routing.grading import Expected, Service
 
-from app.routing.auth import current_user
-
-router = APIRouter(prefix="/api/assignments/{assignment_id}/rubric", dependencies=[Depends(current_user)])
-
-GradingMethod = Literal["manual", "auto_numeric", "auto_match"]
-
-
-class Criterion(BaseModel):
-    """One reusable grading criterion ("Label" in the data model)."""
-
-    label_id: str
-    title: str  
-    description: str = ""  # grader-only detail not shown to students
-    deduction: float = 0.0  # negative = deduction positive = credit
+router = APIRouter(prefix='/api/exams')
 
 
 class CriterionIn(BaseModel):
-    title: str
-    description: str = ""
-    deduction: float = 0.0
-
-
-class Question(BaseModel):
-    """One rubric question (a "Rubric" row plus its linked "Label"s)."""
-
-    qid: str
-    grading_method: GradingMethod
-    total_score: float
-    criteria: list[Criterion] = []
+    title: str = Field(min_length=1, max_length=50)
+    description: str | None = Field(default=None, max_length=10000)
+    deduction: Annotated[Decimal, Field(max_digits=5, decimal_places=2, allow_inf_nan=False)]
 
 
 class QuestionIn(BaseModel):
-    qid: str
-    grading_method: GradingMethod = "manual"
-    total_score: float
+    qid: str = Field(min_length=1, max_length=50)
+    grading_method: Literal['manual', 'auto_numeric', 'auto_match'] = 'manual'
+    total_score: Annotated[Decimal, Field(ge=0, max_digits=5, decimal_places=2)]
 
 
-class RubricOut(BaseModel):
-    assignment_id: str
-    version: int
-    questions: list[Question]
+@router.get('/{exam_ID}/questions/{QID}/rubric')
+def rubric(exam_ID: int, QID: str, svc: Service):
+    return svc.rubric_snapshot(exam_ID, QID)
 
 
-class CopyRubricIn(BaseModel):
-    from_assignment_id: str
+@router.post('/{exam_ID}/questions/{QID}/rubric/labels', status_code=201)
+def add_label(exam_ID: int, QID: str, body: CriterionIn, svc: Service, if_match: Expected = None):
+    return svc.change_rubric(exam_ID, QID, body.title, body.description, body.deduction, if_match)
 
 
-class ImportRubricIn(BaseModel):
-    markdown: str
-
-
-@router.get("", response_model=RubricOut)
-def get_rubric(assignment_id: str):
-    """Full rubric for this exam: every question and its criteria, newest version only."""
-    raise HTTPException(500, "...")
-
-
-@router.post("/questions", response_model=Question, status_code=201)
-def add_question(assignment_id: str, body: QuestionIn):
-    raise HTTPException(500, "...")
-
-
-@router.patch("/questions/{qid}", response_model=Question)
-def update_question(assignment_id: str, qid: str, body: QuestionIn):
-    raise HTTPException(500, "...")
-
-
-@router.delete("/questions/{qid}", status_code=204)
-def retire_question(assignment_id: str, qid: str):
-    raise HTTPException(500, "...")
-
-
-@router.post("/questions/{qid}/criteria", response_model=Criterion, status_code=201)
-def add_criterion(assignment_id: str, qid: str, body: CriterionIn):
-    raise HTTPException(500, "...")
-
-
-@router.patch("/criteria/{label_id}", response_model=Criterion)
-def update_criterion(assignment_id: str, label_id: str, body: CriterionIn):
-    """Edit a criterion's points or wording."""
-    raise HTTPException(500, "...")
-
-
-@router.delete("/criteria/{label_id}", status_code=204)
-def retire_criterion(assignment_id: str, label_id: str):
-    raise HTTPException(500, "...")
-
-
-@router.post("/questions/{qid}/criteria/{label_id}/split", status_code=202)
-def split_criterion(assignment_id: str, qid: str, label_id: str, replacements: list[CriterionIn]):
-    raise HTTPException(500, "...")
-
-
-
-
-
+@router.post('/{exam_ID}/rubric/questions', status_code=201)
+def add_question(exam_ID: int, body: QuestionIn, svc: Service):
+    """Initialize a question; existing exam creation/assignment methods stay intact."""
+    with svc.access(exam_ID) as (conn, role):
+        if role != 'instructor':
+            raise HTTPException(403, 'Only instructors can create questions')
+        conn.execute('INSERT INTO rubric(exam_id,qid,grading_method,total_scores) VALUES(%s,%s,%s,%s)',
+                     (exam_ID, body.qid, body.grading_method, amount(body.total_score)))
+        conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)
+            SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
+            JOIN exam e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
+            WHERE p.exam_id=%s ON CONFLICT DO NOTHING''', (body.qid, exam_ID))
+        return body

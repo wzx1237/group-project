@@ -1,0 +1,1 @@
+"""Atomic PostgreSQL grading workflow."""
