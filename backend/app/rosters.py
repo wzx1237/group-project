@@ -33,7 +33,7 @@ def students(pool: ConnectionPool) -> list[dict]:
     course = config.load()["course"]
     with pool.connection() as conn:
         return conn.execute(
-            """SELECT lpad(s.uid::text, 9, '0') AS uid, s.name, NULL::text AS directory_id
+            """SELECT s.uid, s.name, s.directory_id
                FROM student s JOIN enrollment USING (uid) JOIN course c USING (course_id)
                WHERE c.code = %s AND c.term = %s
                ORDER BY s.name""",
@@ -45,9 +45,9 @@ def staff(pool: ConnectionPool) -> list[dict]:
     course = config.load()["course"]
     with pool.connection() as conn:
         return conn.execute(
-            """SELECT s.directory_id, s.name, s.email, course_staff.role
+            """SELECT s.directory_id, s.name, s.email, s.role
                FROM staff s JOIN course_staff USING (directory_id) JOIN course c USING (course_id)
                WHERE c.code = %s AND c.term = %s
-               ORDER BY course_staff.role, s.name""",
+               ORDER BY s.role, s.name""",
             (course["code"], course["term"]),
         ).fetchall()

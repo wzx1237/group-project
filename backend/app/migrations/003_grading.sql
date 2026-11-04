@@ -3,51 +3,20 @@
 -- One exam belongs to one course offering. A course offering is identified by code+term.
 BEGIN;
 
-CREATE TABLE staff (
-  directory_ID TEXT PRIMARY KEY CHECK (directory_ID = lower(directory_ID)),
-  name TEXT NOT NULL,
-  email TEXT
-);
-
-CREATE TABLE course (
-  course_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code TEXT NOT NULL,
-  term TEXT NOT NULL,
-  title TEXT,
-  UNIQUE (code, term)
-);
-
--- A person's role belongs to a course, not necessarily to their global identity.
-CREATE TABLE course_staff (
-  course_ID INT REFERENCES course(course_ID) ON DELETE CASCADE,
-  directory_ID TEXT REFERENCES staff(directory_ID) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('instructor', 'ta')),
-  PRIMARY KEY (course_ID, directory_ID)
-);
-
-CREATE TABLE student (
-  UID INT PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT
-);
-
-CREATE TABLE enrollment (
-  course_ID INT REFERENCES course(course_ID) ON DELETE CASCADE,
-  UID INT REFERENCES student(UID) ON DELETE CASCADE,
-  PRIMARY KEY (course_ID, UID)
-);
-
 -- Replaces the separate course_exam join table for the one-course-per-exam case.
 CREATE TABLE Exam (
   exam_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   course_ID INT NOT NULL REFERENCES course(course_ID) ON DELETE CASCADE,
-  exam_name VARCHAR(100) NOT NULL
+  exam_name VARCHAR(100) NOT NULL,
+  due DATE,
+  blank_pdf TEXT,             -- file path
+  answer_key_pdf TEXT         -- file path
 );
 
 -- Name/email/directory identity are read from student, not duplicated per paper.
 CREATE TABLE StudentPaper (
   exam_ID INT NOT NULL REFERENCES Exam(exam_ID) ON DELETE CASCADE,
-  UID INT NOT NULL REFERENCES student(UID) ON DELETE CASCADE,
+  UID TEXT NOT NULL REFERENCES student(UID) ON DELETE CASCADE,
   scanned_PDF TEXT NOT NULL,
   comments TEXT,
   PRIMARY KEY (exam_ID, UID)
@@ -59,21 +28,23 @@ CREATE TABLE Rubric (
   QID VARCHAR(50),
   grading_method VARCHAR(50) NOT NULL,
   total_scores DECIMAL(5, 2),
+  title TEXT,
+  region JSON,
   PRIMARY KEY (exam_ID, QID)
 );
 
 CREATE TABLE Label (
   exam_ID INT NOT NULL REFERENCES Exam(exam_ID) ON DELETE CASCADE,
-  Label_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  label_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   title VARCHAR(50) NOT NULL,
   description TEXT,
   deduction DECIMAL(5, 2),
-  UNIQUE (exam_ID, Label_ID)
+  UNIQUE (exam_ID, label_ID)
 );
 
 CREATE TABLE Mapping (
   exam_ID INT NOT NULL,
-  UID INT,
+  UID TEXT,
   QID VARCHAR(50),
   directory_ID TEXT,
   status VARCHAR(50),
@@ -86,10 +57,11 @@ CREATE TABLE Mapping (
 CREATE TABLE Decision (
   exam_ID INT NOT NULL,
   record_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  UID INT NOT NULL,
+  UID TEXT NOT NULL,
   QID VARCHAR(50) NOT NULL,
   scores DECIMAL(5, 2),
-  comments_remark TEXT,
+  comments_remark TEXT,             -- available to the student only
+  internal_node TEXT,               -- available to the grader only
   UNIQUE (exam_ID, record_ID),
   -- One current decision per assigned student-question, as in the prototype.
   UNIQUE (exam_ID, UID, QID),
@@ -99,20 +71,20 @@ CREATE TABLE Decision (
 CREATE TABLE Rubric_Label (
   exam_ID INT NOT NULL,
   QID VARCHAR(50),
-  Label_ID INT,
-  PRIMARY KEY (exam_ID, QID, Label_ID),
+  label_ID INT,
+  PRIMARY KEY (exam_ID, QID, label_ID),
   FOREIGN KEY (exam_ID, QID) REFERENCES Rubric(exam_ID, QID) ON DELETE CASCADE,
-  FOREIGN KEY (exam_ID, Label_ID) REFERENCES Label(exam_ID, Label_ID) ON DELETE CASCADE
+  FOREIGN KEY (exam_ID, label_ID) REFERENCES Label(exam_ID, label_ID) ON DELETE CASCADE
 );
 
 CREATE TABLE Decision_Label (
   exam_ID INT NOT NULL,
   record_ID INT,
-  Label_ID INT,
+  label_ID INT,
   directory_ID TEXT,
-  PRIMARY KEY (exam_ID, record_ID, Label_ID),
+  PRIMARY KEY (exam_ID, record_ID, label_ID),
   FOREIGN KEY (exam_ID, record_ID) REFERENCES Decision(exam_ID, record_ID) ON DELETE CASCADE,
-  FOREIGN KEY (exam_ID, Label_ID) REFERENCES Label(exam_ID, Label_ID) ON DELETE CASCADE,
+  FOREIGN KEY (exam_ID, label_ID) REFERENCES Label(exam_ID, label_ID) ON DELETE CASCADE,
   FOREIGN KEY (directory_ID) REFERENCES staff(directory_ID) ON DELETE SET NULL
 );
 
@@ -169,26 +141,7 @@ BEGIN
     USING ERRCODE = '0A000';
 END $$;
 
-CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON staff
-  FOR EACH ROW EXECUTE FUNCTION audit_capture_change('directory_id');
-CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON staff
-  FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
-CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON course
-  FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id');
-CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON course
-  FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
-CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON course_staff
-  FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id', 'directory_id');
-CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON course_staff
-  FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
-CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON student
-  FOR EACH ROW EXECUTE FUNCTION audit_capture_change('uid');
-CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON student
-  FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
-CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON enrollment
-  FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id', 'uid');
-CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON enrollment
-  FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
+
 CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON exam
   FOR EACH ROW EXECUTE FUNCTION audit_capture_change('exam_id');
 CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON exam

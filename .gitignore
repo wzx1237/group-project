@@ -38,6 +38,3 @@ next-env.d.ts
 /*.pdf
 /*.txt
 /*.xlsx
-
-# Local PostgreSQL audit delivery files
-/backend/logs/

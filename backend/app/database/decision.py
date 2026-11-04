@@ -225,7 +225,7 @@ class Decision:
       raise ValueError(f"Decision {record_ID} does not exist")
     return decision
 
-  def _validate_graders(self, cursor, graders, exam_ID: int) -> None:
+  def validate_graders(self, cursor, graders, exam_ID: int) -> None:
     """Keep each supplied course membership valid through the grading write."""
     for directory_ID in sorted(set(graders)):
       cursor.execute(
@@ -240,7 +240,7 @@ class Decision:
       if self.get_one(cursor) is None:
         raise ValueError("Staff member is not assigned to the exam's course")
 
-  def _recalculate_score(self, cursor, record_ID: int, exam_ID: int) -> None:
+  def recalculate_score(self, cursor, record_ID: int, exam_ID: int) -> None:
     """All rows are current rows now; signed deductions directly form the score."""
     cursor.execute(
       """

@@ -59,15 +59,6 @@ class Database(
       kwargs={"row_factory": dict_row}    # intentionally change the return type from Tuple to Dict
     )
 
-  @classmethod
-  def from_pool(cls, pool):
-    """Adapt the application's existing PostgreSQL pool without owning a second pool."""
-    instance = cls.__new__(cls)
-    instance._initialize_audit()
-    instance._active_connection = ContextVar('gradeflow_active_connection', default=None)
-    instance.pool = pool
-    return instance
-
   def get_connection(self) -> ContextManager[psycopg.Connection[Dict[str, Any]]]:
     return self._reusable_connection()
 

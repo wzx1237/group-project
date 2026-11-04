@@ -25,19 +25,19 @@ def seed(url: str) -> None:
         for person in staff:
             directory_id = person["directory_id"].lower()
             conn.execute(
-                """INSERT INTO staff (directory_id, name, email) VALUES (%s, %s, %s)
-                   ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email""",
-                (directory_id, person["name"], person["email"] or None),
+                """INSERT INTO staff (directory_id, name, email, role) VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role""",
+                (directory_id, person["name"], person["email"] or None, person["role"].lower()),
             )
             conn.execute(
-                "INSERT INTO course_staff (course_id, directory_id, role) VALUES (%s, %s, %s) ON CONFLICT (course_id, directory_id) DO UPDATE SET role = EXCLUDED.role",
-                (course_id, directory_id, person["role"].lower()),
+                "INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (course_id, directory_id),
             )
         for student in students:
             conn.execute(
-                """INSERT INTO student (uid, name) VALUES (%s, %s)
-                   ON CONFLICT (uid) DO UPDATE SET name = EXCLUDED.name""",
-                (int(student["uid"]), student["name"]),
+                """INSERT INTO student (uid, name, directory_id) VALUES (%s, %s, %s)
+                   ON CONFLICT (uid) DO UPDATE SET name = EXCLUDED.name, directory_id = EXCLUDED.directory_id""",
+                (student["uid"], student["name"], student["directory_id"].lower() or None),
             )
             conn.execute(
                 "INSERT INTO enrollment (course_id, uid) VALUES (%s, %s) ON CONFLICT DO NOTHING",
