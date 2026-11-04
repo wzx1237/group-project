@@ -1,0 +1,19 @@
+.page { max-width: 1300px; margin: auto; padding: 32px; color: #173c35; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 20px; }
+.card { border: 1px solid #cbdcd7; border-radius: 12px; padding: 24px; background: white; }
+.page a { color: #0f6e56; text-decoration: underline; }
+.page button { background: #0f6e56; color: white; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
+.page button:disabled { opacity: .5; cursor: default; }
+.page input, .page textarea { padding: 8px; border: 1px solid #8ba69e; border-radius: 4px; }
+.page textarea { width: 100%; min-height: 100px; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 24px; }
+.pdf { width: 100%; height: 75vh; border: 1px solid #cbdcd7; background: #eee; }
+.criteria { display: grid; gap: 12px; margin: 20px 0; }
+.criterion { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: #f0f7f4; border-radius: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.error { background: #fff1ed; color: #9c2914; padding: 16px; border-radius: 6px; margin: 16px 0; }
+.notice { background: #edf7f2; padding: 16px; border-radius: 6px; margin: 16px 0; }
+.form { display: grid; gap: 12px; border-top: 1px solid #cbdcd7; margin-top: 24px; padding-top: 16px; }
+.form label { display: grid; gap: 6px; }
+@media(max-width:800px) { .workspace { grid-template-columns: 1fr; } .page { padding: 16px; } }

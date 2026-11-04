@@ -139,3 +139,29 @@ The native tests create/drop unique isolated schemas and exercise real PostgreSQ
 transactions; no application data is deleted. Without this variable, native
 integration tests are explicitly skipped. The existing unit tests mock DB/CAS.
 Live UMD SSO and browser frontend wiring are separate from these backend checks.
+
+## Frontend integration
+
+The Next.js `/courses` page now reads `/api/courses` and links to
+`/courses/{course_ID}`, which displays actual exam/question workloads. Selecting
+a question opens `/courses/{course_ID}/exams/{exam_ID}/grade?qid={QID}`.
+The workspace explicitly claims/resumes work on a button click, embeds the
+protected PDF URL, presents current labels and previous decisions, and submits
+POST/PUT according to whether a decision exists. It supports releasing work,
+advancing to the next answer, and adding a shared criterion with confirmation.
+After a 412 conflict or a rubric addition, saving is disabled until the TA
+explicitly reloads and reviews the current workspace. Failed writes are not
+automatically retried. Reloading prompts before replacing local edits.
+
+Run the backend on port 8000 and `cd frontend && npm run dev` in another
+terminal. The existing Next rewrite forwards `/api` to the backend, retaining
+session cookies; no cross-origin token or CORS configuration is needed.
+`GRADEFLOW_API` may override the backend origin before starting/building Next.
+Sign in through the existing CAS screen. The PDF is a full scan, not a cropped
+answer region. The old JSON distribution upload pipeline still requires a
+separate PostgreSQL StudentPaper registration step.
+
+Frontend validation: `cd frontend && npm test` runs service-contract and
+workspace-interaction tests; `npm run build` validates the production routes.
+Local proxy checks used a development-only signed staff session to verify
+course/question API responses; this is not a live UMD CAS/browser acceptance test.
