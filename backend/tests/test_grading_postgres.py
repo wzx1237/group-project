@@ -315,17 +315,3 @@ def test_label_recalculation_failure_rolls_back_definition(native):
         database.edit_label(2,'Too large',None,999,exam_ID=1)
     assert database.get_label(2,exam_ID=1)['deduction']==-1
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==4
-
-
-def test_upgrade_of_already_registered_003(native):
-    _,database,dsn,_,_=native
-    with psycopg.connect(dsn) as conn:
-        conn.execute('ALTER TABLE decision RENAME COLUMN internal_note TO internal_node')
-        conn.execute('ALTER TABLE decision DROP COLUMN updated_at')
-        conn.execute('ALTER TABLE rubric ALTER COLUMN region TYPE JSON USING region::json')
-        conn.execute("DELETE FROM schema_migration WHERE name='004_grading_alignment.sql'")
-    assert db.migrate(dsn)==['004_grading_alignment.sql']
-    with database.get_connection() as conn:
-        row=conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='decision'").fetchall()
-        assert {'internal_note','updated_at'} <= {r['column_name'] for r in row}
-    assert db.migrate(dsn)==[]

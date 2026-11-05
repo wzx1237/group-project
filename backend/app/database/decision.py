@@ -9,7 +9,7 @@ __all__ = ["Decision"]
 class Decision:
   """Business methods sharing Database transaction and audit handling."""
 
-  def get_grading_decision(self, uid: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
+  def get_grading_decision(self, UID: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
     '''
     input: student UID (dtype: string)
     output: a dictionary of grading decision, in format {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...)
@@ -19,12 +19,12 @@ class Decision:
       with self.get_worker() as cursor:
         cursor.execute(
           """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""", 
-          (exam_ID, uid)
+          (exam_ID, UID)
         )
         return self.get_all(cursor)    # search with value, could have multiple results
     except psycopg.Error as error:
       # if exception happens, save it to our log
-      logger.exception("query student UID failed", extra={"extra": {"UID": uid}})
+      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
       raise
 
   def get_student_total_score(self, UID: str, *, exam_ID: int) -> float | None:
