@@ -112,19 +112,26 @@ class Rubric:
     if self.get_one(cursor) is None:
       raise ValueError(f"Rubric {QID} does not exist")
 
-  def add_question(self, QID, title, grading_method, total_scores, region=None, *, exam_ID):
+  def add_question(self, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID):
     """Create a question independently of its reusable label relationships."""
     from psycopg.types.json import Jsonb
     with self.get_worker() as cursor:
-      cursor.execute('INSERT INTO rubric(exam_id,qid,title,grading_method,total_scores,region) VALUES(%s,%s,%s,%s,%s,%s)',
-                     (exam_ID, QID, title, grading_method, total_scores, Jsonb(region)))
+      cursor.execute('INSERT INTO rubric(exam_id,qid,title,grading_method,total_scores,region,scoring) VALUES(%s,%s,%s,%s,%s,%s,%s)',
+                     (exam_ID, QID, title, grading_method, total_scores, Jsonb(region), scoring))
 
-  def edit_question(self, QID, title, grading_method, total_scores, region=None, *, exam_ID):
+  def edit_question(self, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID):
+    """Points and scoring decide every score, so saved scores for this question are recalculated."""
     from psycopg.types.json import Jsonb
     with self.get_worker() as cursor:
-      cursor.execute('UPDATE rubric SET title=%s,grading_method=%s,total_scores=%s,region=%s WHERE exam_id=%s AND qid=%s',
-                     (title, grading_method, total_scores, Jsonb(region), exam_ID, QID))
-      return cursor.rowcount > 0
+      cursor.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam_ID,))
+      cursor.execute('UPDATE rubric SET title=%s,grading_method=%s,total_scores=%s,region=%s,scoring=%s WHERE exam_id=%s AND qid=%s',
+                     (title, grading_method, total_scores, Jsonb(region), scoring, exam_ID, QID))
+      changed = cursor.rowcount > 0
+      cursor.execute('SELECT record_id FROM decision WHERE exam_id=%s AND qid=%s ORDER BY record_id', (exam_ID, QID))
+      for record in [row['record_id'] for row in cursor.fetchall()]:
+        self._lock_decision(cursor, record, exam_ID)
+        self._recalculate_score(cursor, record, exam_ID)
+      return changed
 
   def remove_question(self, QID, *, exam_ID):
     """Delete the current question; FK cascades are captured by audit triggers."""

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import styles from './questions.module.css'
 
+// renders a single editable question row with title points and region button
 function QuestionRow({ index, question, onUpdate, onRemove, onDraw }) {
   const [draft, setDraft] = useState({ title: question.title, total_score: question.total_score })
 
@@ -11,6 +12,7 @@ function QuestionRow({ index, question, onUpdate, onRemove, onDraw }) {
     setDraft({ title: question.title, total_score: question.total_score })
   }, [question.title, question.total_score])
 
+  // commits edited question title and points to parent state
   function commit() {
     onUpdate({ title: draft.title, total_score: Number(draft.total_score) || 0 })
   }
@@ -44,6 +46,7 @@ function QuestionRow({ index, question, onUpdate, onRemove, onDraw }) {
   )
 }
 
+// renders the sidebar list of defined questions with total points summary
 export function QuestionList({ questions, onAddQuestion, onUpdateQuestion, onRemoveQuestion, onDraw, onBack, onContinue }) {
   const totalPts = questions.reduce((sum, q) => sum + (Number(q.total_score) || 0), 0)
 

@@ -78,8 +78,6 @@ class GradingService:
                                   (exam, uid, qid)).fetchone()
         if assignment is None:
             raise HTTPException(404, 'Grading assignment not found')
-        if assignment['directory_id'] not in (None, self.actor) and role != 'instructor':
-            raise HTTPException(403, 'Answer is assigned to another TA')
         decision = self.db.get_decision_by_student_question(uid, qid, exam_ID=exam)
         selected = self.db.get_decision_label(decision['record_id'], exam_ID=exam) if decision else []
         paper = conn.execute('SELECT scanned_pdf FROM studentpaper WHERE exam_id=%s AND uid=%s',
@@ -113,16 +111,19 @@ class GradingService:
             definitions = {row['label_id']: row for row in state['labels']}
             if any(label not in definitions for label in labels):
                 raise HTTPException(422, 'Selected labels must belong to this question rubric')
-            score = amount(sum((definitions[label]['deduction'] for label in labels), Decimal(0)))
             if state['assignment']['directory_id'] is None:
                 conn.execute('UPDATE mapping SET directory_id=%s WHERE exam_id=%s AND uid=%s AND qid=%s',
                              (self.actor, exam, uid, qid))
             record = state['decision']['record_id'] if regrade else self.db.save_decision(uid, qid, exam_ID=exam)
             self.db.add_decision_labels(record, labels, [self.actor] * len(labels), exam_ID=exam)
             self.db.update_decision(record, comments, exam_ID=exam)
-            self.db.update_assignment_status(uid, qid, 'Finished', exam_ID=exam)
+            # An answer is graded once a label is applied; with none it stays in progress.
+            status = 'Finished' if labels else 'InProgress'
+            self.db.update_assignment_status(uid, qid, status, exam_ID=exam)
+            # The database applies the question's scoring and limits, so report what it saved.
+            score = self.db.get_decision(record, exam_ID=exam)['scores']
             return dict(record_ID=record, exam_ID=exam, UID=uid, QID=qid, score=score,
-                        labels=labels, comments=comments, status='Finished')
+                        labels=labels, comments=comments, status=status)
 
     def change_rubric(self, exam, qid, title, description, deduction, expected):
         deduction = amount(deduction)

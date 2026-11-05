@@ -289,3 +289,21 @@
   color: #4b5563;
   flex-shrink: 0;
 }
+.twoColumnDashboard {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .twoColumnDashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sidebarStack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}

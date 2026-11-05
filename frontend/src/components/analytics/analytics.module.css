@@ -1,0 +1,110 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+}
+
+.stat dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stat dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.statValue {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+}
+
+.cardHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+}
+
+.cardMeta,
+.axisTitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.axisTitle {
+  margin-bottom: 4px;
+}
+
+.xAxisTitle {
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+.tooltip {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 6px rgb(32 44 48 / 0.12);
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.empty {
+  margin: 0;
+  padding: 32px 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

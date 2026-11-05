@@ -1,9 +1,7 @@
 'use client'
 
-import { useCourse } from '@/context/CourseContext'
-import StaffRoster from '@/exam-distribution/components/StaffRoster'
+import StaffRosterPage from '@/components/staff/StaffRosterPage'
 
-export default function CourseStaffPage() {
-  const { course } = useCourse()
-  return <StaffRoster course={course} />
+export default function CourseStaffDynamicPage() {
+  return <StaffRosterPage />
 }

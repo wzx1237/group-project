@@ -31,13 +31,15 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
 .crumbs li + li::before {
-  content: '›';
+  content: '>';
   margin-right: 8px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .crumbs li:last-child {
@@ -48,6 +50,10 @@
 .crumbs a {
   color: inherit;
   text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--fg);
 }
 
 .account {
@@ -99,9 +105,26 @@
   color: var(--fg);
   font: inherit;
   font-size: 12px;
+  text-align: left;
   cursor: pointer;
 }
 
 .signOut:hover {
-  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.saved,
+.saving,
+.unsaved,
+.error {
+  font-size: 11px;
+}
+
+.saving,
+.unsaved {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
 }

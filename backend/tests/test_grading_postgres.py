@@ -128,7 +128,8 @@ def test_validation_auth_and_no_partial_writes(native):
         assert conn.execute('SELECT count(*) AS n FROM decision').fetchone()['n'] == 0
         assert conn.execute('SELECT count(*) AS n FROM label').fetchone()['n'] == 3
     app.dependency_overrides[current_user] = lambda: 'bob'
-    assert client.get(BASE + '/workspace').status_code == 403
+    # TAs can open an answer assigned to another TA; start still skips it.
+    assert client.get(BASE + '/workspace').status_code == 200
     claimed = client.post('/api/exams/1/questions/Q1/start')
     assert claimed.status_code == 200 and claimed.json()['UID'] == '234567890'
     app.dependency_overrides.clear()
@@ -139,7 +140,8 @@ def test_empty_labels_replay_and_pdf_confinement(native):
     client, database, _, _, _ = native
     state = client.get(BASE + '/workspace').json()
     result = save(client, [], snapshot=state)
-    assert result.status_code == 201 and result.json()['score'] == 0
+    # No labels means not graded yet, so there is no score.
+    assert result.status_code == 201 and result.json()['score'] is None
     assert save(client, [1], snapshot=state).status_code == 412
     assert save(client, [1]).status_code == 409
     assert save(client, [], regrade=True).status_code == 200
@@ -210,13 +212,12 @@ def test_rollback_includes_grade_and_audit(native, monkeypatch):
     assert not any(e['table'] == 'decision' for e in events)
 
 
-def test_instructor_question_creation_and_release(native):
+def test_staff_question_creation_and_release(native):
     client, database, _, _, app = native
-    assert client.post('/api/exams/1/rubric/questions',
-                       json={'qid':'Q3','total_score':'10'}).status_code == 403
-    app.dependency_overrides[current_user] = lambda: 'teacher'
+    # TAs and instructors have the same rubric permissions.
     created = client.post('/api/exams/1/rubric/questions', json={'qid':'Q3','total_score':'10'})
     assert created.status_code == 201, created.text
+    app.dependency_overrides[current_user] = lambda: 'teacher'
     assert client.post('/api/exams/1/rubric/questions',
                        json={'qid':'Q3','total_score':'10'}).status_code == 409
     app.dependency_overrides[current_user] = lambda: 'bob'
@@ -288,12 +289,13 @@ def test_frontend_rubric_edit_recalculates_and_keeps_notes_private(native):
     assert edited.status_code==200,edited.text
     assert client.get('/api/assignments/1/submissions/123456789/questions/Q1').json()['score']==3
     assert client.delete(base+'/criteria/1').status_code==204
-    assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==-2
-    assert client.delete(base+'/criteria/2').status_code==204
+    # Only the -2 label is left, and a score never goes below 0.
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==0
+    assert client.delete(base+'/criteria/2').status_code==204
+    assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores'] is None
     assert client.delete(base+'/questions/Q9').status_code==204
     app.dependency_overrides[current_user] = lambda: 'alice'
-    assert client.patch(base+'/criteria/3',json={'title':'Denied','deduction':0}).status_code==403
+    assert client.patch(base+'/criteria/3',json={'title':'TA edit','deduction':0}).status_code==200
 
 
 def test_text_uid_base_methods_and_borrowed_pool(native):
@@ -307,10 +309,14 @@ def test_text_uid_base_methods_and_borrowed_pool(native):
     assert database.get_student('012345678')['uid']=='012345678'
 
 
-def test_label_recalculation_failure_rolls_back_definition(native):
+def test_label_recalculation_failure_rolls_back_definition(native, monkeypatch):
     client,database,_,_,_=native
     assert save(client,[1,2]).status_code==201
-    # NUMERIC(5,2) overflow must roll back the label and every derived score.
+    # Capped scores can't overflow, so fail the recalculation directly.
+    # It must roll back the label and every derived score.
+    def fail(*args):
+        raise psycopg.errors.NumericValueOutOfRange('recalculation failed')
+    monkeypatch.setattr(type(database), '_recalculate_score', fail)
     with pytest.raises(psycopg.errors.NumericValueOutOfRange):
         database.edit_label(2,'Too large',None,999,exam_ID=1)
     assert database.get_label(2,exam_ID=1)['deduction']==-1

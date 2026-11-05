@@ -1,19 +1,24 @@
-/**
- * Displays top-level KPI cards computed strictly from fully graded submissions (Figure 9b):
- * Class average, Median, Highest score, and Lowest score.
- * @param {Object} props
- * @param {number} props.classAverage - Mean score across fully graded exams
- * @param {number} props.median - Median score across fully graded exams
- * @param {number} props.highest - Maximum score achieved
- * @param {number} props.lowest - Minimum score achieved
- * @param {number} props.maxPossiblePoints - Total exam points (e.g., 20)
- * @param {number} props.fullyGradedCount - Number of completed exams included in class totals
- */
-export function SummaryStatCards({
-  classAverage,
-  median,
-  highest,
-  lowest,
-  maxPossiblePoints,
-  fullyGradedCount,
-}) {}
+import { formatNumber } from '@/lib/rubric'
+import styles from './analytics.module.css'
+
+const STATS = [
+  ['average', 'Class average'],
+  ['median', 'Median'],
+  ['highest', 'Highest'],
+  ['lowest', 'Lowest'],
+]
+
+export function SummaryStatCards({ stats, totalPoints }) {
+  return (
+    <dl className={styles.stats}>
+      {STATS.map(([key, label]) => (
+        <div key={key} className={styles.stat}>
+          <dt>{label}</dt>
+          <dd>
+            <span className={styles.statValue}>{stats ? formatNumber(stats[key]) : '—'}</span> / {totalPoints}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}

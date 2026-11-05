@@ -168,7 +168,7 @@ class Decision:
           """,
           [(exam_ID, record_ID, label, grader) for label, grader in zip(labels, Graders)]
         )
-      # An empty selection is a valid current state and contributes zero points.
+      # An empty selection leaves the answer ungraded, with no score.
       self._recalculate_score(cursor, record_ID, exam_ID)
       return True
 
@@ -229,13 +229,21 @@ class Decision:
         raise ValueError("Staff member is not assigned to the exam's course")
 
   def _recalculate_score(self, cursor, record_ID: int, exam_ID: int) -> None:
-    """All rows are current rows now; signed deductions directly form the score."""
+    """Start at full points ('deduct') or 0 ('add'), add the signed labels, keep it between 0 and total_scores.
+
+    With no labels the answer isn't graded yet, so the score is NULL.
+    """
     cursor.execute(
       """
-      SELECT COALESCE(SUM(l.deduction), 0) AS score
-      FROM Decision_Label AS dl JOIN Label AS l
-        ON (l.exam_ID, l.Label_ID) = (dl.exam_ID, dl.Label_ID)
-      WHERE dl.exam_ID = %s AND dl.record_ID = %s
+      SELECT CASE WHEN COUNT(l.Label_ID) > 0 THEN LEAST(GREATEST(
+               CASE WHEN r.scoring = 'deduct' THEN COALESCE(r.total_scores, 0) ELSE 0 END
+               + SUM(l.deduction), 0), COALESCE(r.total_scores, 0)) END AS score
+      FROM Decision AS d
+        JOIN Rubric AS r ON (r.exam_ID, r.QID) = (d.exam_ID, d.QID)
+        LEFT JOIN Decision_Label AS dl ON (dl.exam_ID, dl.record_ID) = (d.exam_ID, d.record_ID)
+        LEFT JOIN Label AS l ON (l.exam_ID, l.Label_ID) = (dl.exam_ID, dl.Label_ID)
+      WHERE d.exam_ID = %s AND d.record_ID = %s
+      GROUP BY r.scoring, r.total_scores
       """,
       (exam_ID, record_ID)
     )

@@ -7,6 +7,7 @@ import styles from './questions.module.css'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
+// canvas component for rendering pdf pages and drawing answer regions
 export function RegionCanvas({ questions, activeQid, onSaveRegion, currentPage, onChangePage }) {
   const containerRef = useRef(null)
   const [drag, setDrag] = useState(null)
@@ -21,6 +22,7 @@ export function RegionCanvas({ questions, activeQid, onSaveRegion, currentPage, 
     return () => URL.revokeObjectURL(url)
   }, [file])
 
+  // handles the selection of a local blank exam pdf file
   function handlePickFile(e) {
     const picked = e.target.files?.[0]
     if (picked) {
@@ -34,6 +36,7 @@ export function RegionCanvas({ questions, activeQid, onSaveRegion, currentPage, 
     .map((q, i) => ({ ...q, n: i + 1 }))
     .filter((q) => q.region && q.region.page === currentPage)
 
+  // handles mouse down to begin drawing a rectangular region
   function handleDown(e) {
     if (!activeQid) return
     const rect = containerRef.current.getBoundingClientRect()
@@ -42,12 +45,14 @@ export function RegionCanvas({ questions, activeQid, onSaveRegion, currentPage, 
     setDrag({ startX: x, startY: y, curX: x, curY: y })
   }
 
+  // updates the dimensions of the active drag box as mouse moves
   function handleMove(e) {
     if (!drag) return
     const rect = containerRef.current.getBoundingClientRect()
     setDrag((d) => ({ ...d, curX: e.clientX - rect.left, curY: e.clientY - rect.top }))
   }
 
+  // finalizes the drawn box and saves coordinates to parent state
   function handleUp() {
     if (!drag) return
     const rect = containerRef.current.getBoundingClientRect()
@@ -133,7 +138,6 @@ export function RegionCanvas({ questions, activeQid, onSaveRegion, currentPage, 
           </div>
         </div>
       )}
-
     </section>
   )
 }

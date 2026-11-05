@@ -1,14 +1,19 @@
+import Link from 'next/link'
+import { Plus } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
+import { RoleBadge } from '@/components/layout/RoleBadge'
 import { formatDue } from '@/exam-distribution/lib/status'
 import { coursePath } from '@/lib/routes'
 import { ExamRow } from './examRow'
 import styles from './courseCard.module.css'
 
+// formats singular or plural counts for display
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
+// calculates the status label and progress percentage for an assignment exam row
 function rowState(assignment) {
-  const uploads = assignment.uploads
+  const uploads = assignment.uploads || []
   if (uploads.length === 0) return { status: null, progress: null, note: 'No uploads yet' }
   if (uploads.some((u) => u.status === 'failed' || u.matching === 'failed')) {
     return { status: { label: 'Failed', tone: 'danger' }, progress: null, note: 'Open to retry' }
@@ -16,57 +21,62 @@ function rowState(assignment) {
   if (uploads.some((u) => u.status !== 'processed' || u.matching === 'running')) {
     return { status: { label: 'Processing', tone: 'outline' }, progress: null, note: 'Splitting or reading UIDs…' }
   }
-  const exams = uploads.flatMap((u) => u.submissions)
+  const exams = uploads.flatMap((u) => u.submissions || [])
   if (uploads.some((u) => u.matching !== 'done')) {
     return { status: { label: 'Needs matching', tone: 'warning' }, progress: null, note: `${plural(exams.length, 'exam')} found` }
   }
-  const matched = exams.filter((s) => s.match.state !== 'needs_review').length
+  const matched = exams.filter((s) => s.match?.state !== 'needs_review').length
   return {
-    status: matched === exams.length ? { label: 'Matched', tone: 'soft' } : { label: 'Needs assignment', tone: 'warning' },
+    status: matched === exams.length ? { label: 'Grading', tone: 'soft' } : { label: 'Needs assignment', tone: 'warning' },
     progress: { done: matched, total: exams.length },
-    note: `${matched} of ${plural(exams.length, 'exam')} matched`,
+    note: `${matched} of ${plural(exams.length, 'exam')} fully graded`,
   }
 }
 
-export function CourseCard({ course, assignments, staff, studentCount, onOpenStaff }) {
+// renders the main course card with staff avatars exam list and setup actions
+export function CourseCard({ course, assignments = [], staff, studentCount, onOpenStaff, onOpenManageTAs }) {
   const base = coursePath(course)
-  const taCount = staff?.filter((person) => person.role === 'ta').length
+  const taCount = staff?.filter((person) => person.role?.toLowerCase() === 'ta').length
   const details = [
     course.term,
-    course.instructor,
     studentCount != null && plural(studentCount, 'student'),
     taCount != null && plural(taCount, 'TA'),
   ].filter(Boolean)
-  const byDue = [...assignments].sort((a, b) => a.due.localeCompare(b.due))
+  const byDue = [...assignments].sort((a, b) => (a.due || '').localeCompare(b.due || ''))
 
   return (
     <section className={styles.card}>
       <header className={styles.heading}>
         <div className={styles.identity}>
-          <h2 className={styles.title}>{course.code}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 className={styles.title}>{course.code} · {course.title || course.name || 'Course'}</h2>
+            <RoleBadge role={course.role || 'Professor'} />
+          </div>
           <p className={styles.details}>{details.join(' · ')}</p>
         </div>
         <div className={styles.actions}>
           {staff && (
             <div className={styles.staff}>
               {staff.map((person) => (
-                <Avatar key={person.directory_id} name={person.name} className={styles.staffAvatar} />
+                <Avatar key={person.directory_id || person.email || person.name} name={person.name} className={styles.staffAvatar} />
               ))}
             </div>
           )}
-          <Button href={`${base}/roster`}>Student roster</Button>
-          {onOpenStaff ? (
-            <Button onClick={onOpenStaff}>Staff roster</Button>
-          ) : (
-            <Button href="/courses/staff">Staff roster</Button>
-          )}
+          <Button variant="secondary" onClick={onOpenManageTAs || onOpenStaff}>
+            Manage TAs
+          </Button>
+          <Link href={`${base}/exams/new`}>
+            <Button>
+              <Plus size={14} /> New exam
+            </Button>
+          </Link>
         </div>
       </header>
       <div className={styles.columns} aria-hidden="true">
-        <span>Assignment</span>
-        <span>Due</span>
+        <span>Exam</span>
+        <span>Date</span>
         <span>Status</span>
-        <span>Progress</span>
+        <span>Grading progress</span>
         <span />
       </div>
       <ul className={styles.rows}>

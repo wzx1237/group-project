@@ -1,0 +1,561 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 24px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+}
+
+.subheading {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: normal;
+  color: var(--muted);
+}
+
+.instructions {
+  margin: 0;
+  padding: 9px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 20px;
+  background: var(--surface-subtle);
+}
+
+.empty {
+  margin: 0;
+  padding: 24px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  line-height: normal;
+  color: var(--fg);
+}
+
+.noticeDetail {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 7px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chevron,
+.iconButton {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.iconButton {
+  padding: 3px;
+  color: var(--fg-secondary);
+}
+
+.iconButton:hover {
+  color: var(--accent);
+}
+
+.chevron:focus-visible,
+.iconButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: normal;
+  color: var(--fg);
+}
+
+.points {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: normal;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.actions svg {
+  color: var(--fg-secondary);
+}
+
+.criteria,
+.parts {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0 0 0 13px;
+  border-left: 1px solid var(--border);
+}
+
+.criteria {
+  gap: 5px;
+  list-style: none;
+}
+
+.parts {
+  gap: 7px;
+}
+
+.criterion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 25px;
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: var(--surface-subtle);
+  font-size: 11px;
+  line-height: normal;
+}
+
+.applicable {
+  width: 100%;
+  border: 0;
+  font-family: inherit;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.applicable:hover {
+  background: var(--row-highlight);
+}
+
+.applicable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.applied,
+.applied:hover {
+  background: var(--accent-soft);
+}
+
+.check,
+.unchecked {
+  flex-shrink: 0;
+}
+
+.check {
+  color: var(--accent);
+}
+
+.unchecked {
+  color: var(--muted);
+}
+
+.adjustment {
+  flex: 0 0 auto;
+  min-width: 40px;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.applied .adjustment {
+  color: var(--accent);
+}
+
+.criterionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.description {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.notesOpen {
+  padding-top: 12px;
+}
+
+.notesBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scope,
+.noteLink,
+.onReport,
+.staffOnly {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scope {
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.notesOpen .scope {
+  font-weight: 600;
+  color: var(--fg-secondary);
+}
+
+.noteLinks {
+  display: flex;
+  gap: 14px;
+}
+
+.noteLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.noteLink:hover {
+  text-decoration: underline;
+}
+
+.noteLink:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.noteField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.noteHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.onReport,
+.staffOnly {
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.onReport {
+  color: var(--accent);
+}
+
+.staffOnly {
+  color: var(--warning);
+}
+
+.noteInput {
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--fg);
+  resize: vertical;
+}
+
+.noteInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.internal {
+  background: var(--surface-subtle);
+}
+
+.noteHint {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.editorHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  line-height: normal;
+}
+
+.editorTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.editorState {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.fields {
+  display: flex;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.narrow {
+  flex: 0 0 65px;
+}
+
+.fieldLabel {
+  font-size: 9px;
+  line-height: normal;
+  color: var(--muted);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.textarea {
+  height: auto;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.problem {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.editorActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  font-size: 9px;
+  line-height: normal;
+  color: var(--muted);
+}
+
+.saveActions {
+  display: flex;
+  gap: 6px;
+}
+
+.scoring {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scoring legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.choices {
+  display: flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.choice {
+  position: relative;
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: normal;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+
+.choice + .choice {
+  border-left: 1px solid var(--border);
+}
+
+.choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.chosen {
+  background: var(--accent-soft);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.signedField {
+  flex: 0 0 90px;
+}
+
+.signed {
+  display: flex;
+}
+
+.sign {
+  flex: 0 0 28px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 4px 0 0 4px;
+  background: var(--surface-subtle);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.sign:hover {
+  background: var(--row-highlight);
+}
+
+.sign:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.signed .input {
+  border-radius: 0 4px 4px 0;
+}

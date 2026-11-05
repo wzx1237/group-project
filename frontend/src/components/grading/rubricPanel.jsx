@@ -1,21 +1,92 @@
-/**
- * Right pane interactive Question Rubric container (Figure 8).
- * Displays expand/collapse controls, question accordion cards, "+ Add question" action, and the "Rubric changes autosave" footer.
- * @param {Object} props
- * @param {Array<Object>} props.questions - List of exam questions with criteria and current student decisions
- * @param {string} props.selectedQid - Currently focused question ID (drives PDF region highlight)
- * @param {number} props.totalSubmissionsCount - Total submissions count shown in "Applies to all N submissions"
- * @param {(qid: string) => void} props.onSelectQuestion - Focuses a question and highlights its PDF region
- * @param {() => void} props.onExpandAll - Toggles expanding/collapsing all question cards
- * @param {() => void} props.onAddQuestion - Adds a new question to the exam rubric
- * @param {() => void} props.onOpenMarkdownModal - Opens Markdown rubric import/export modal
- */
-export function RubricPanel({
-  questions,
-  selectedQid,
-  totalSubmissionsCount,
-  onSelectQuestion,
-  onExpandAll,
-  onAddQuestion,
-  onOpenMarkdownModal,
-}) {}
+'use client'
+
+import { useState } from 'react'
+import { List, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { partsOf, plural, rubricPoints, topLevel as topLevelOf } from '@/lib/rubric'
+import { icon } from './icon'
+import { QuestionEditorForm } from './questionEditorForm'
+import { QuestionRubricCard } from './questionRubricCard'
+import styles from './rubricPanel.module.css'
+
+export function RubricPanel({ questions, submissionCount, actions, grading, className }) {
+  const [collapsed, setCollapsed] = useState(() => new Set())
+  const [adding, setAdding] = useState(false)
+
+  const topLevel = topLevelOf(questions)
+
+  function toggle(qid) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(qid)) next.add(qid)
+      return next
+    })
+  }
+
+  return (
+    <aside className={[styles.pane, className].filter(Boolean).join(' ')} aria-labelledby="rubric-heading">
+      <div className={styles.header}>
+        <div>
+          <h2 id="rubric-heading" className={styles.heading}>
+            Question rubric
+          </h2>
+          <p className={styles.subheading}>
+            {plural(topLevel.length, 'question')} · {plural(rubricPoints(questions), 'possible point')}
+          </p>
+        </div>
+        {topLevel.length > 0 && (
+          <Button size="sm" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(topLevel.map((q) => q.qid)))}>
+            <List {...icon} />
+            {collapsed.size ? 'Expand all' : 'Collapse all'}
+          </Button>
+        )}
+      </div>
+
+      {grading && topLevel.length > 0 && (
+        <p className={styles.instructions}>Select criteria to apply adjustments to the question score.</p>
+      )}
+
+      <div className={styles.list}>
+        {topLevel.length === 0 && !adding && <p className={styles.empty}>No questions yet. Add one to start the rubric.</p>}
+        {topLevel.map((question, i) => (
+          <QuestionRubricCard
+            key={question.qid}
+            question={question}
+            label={`Q${i + 1}`}
+            parts={partsOf(questions, question.qid)}
+            collapsed={collapsed}
+            onToggle={toggle}
+            actions={actions}
+            grading={grading}
+          />
+        ))}
+        {adding && (
+          <div className={styles.card}>
+            <QuestionEditorForm
+              heading="New question"
+              onSave={(body) => actions.addQuestion(body).then((ok) => ok && setAdding(false))}
+              onCancel={() => setAdding(false)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className={styles.footer}>
+        <div className={styles.notice}>
+          <span>Rubric changes autosave</span>
+          <span className={styles.noticeDetail}>
+            {submissionCount === 1
+              ? 'Applies to 1 submission'
+              : submissionCount
+                ? `Applies to all ${submissionCount} submissions`
+                : 'Applies to every submission'}
+          </span>
+        </div>
+        <Button variant="primary" onClick={() => setAdding(true)} disabled={adding}>
+          <Plus {...icon} size={16} />
+          Add question
+        </Button>
+      </div>
+    </aside>
+  )
+}

@@ -1,21 +1,63 @@
-/**
- * Secondary header bar inside the Grading Workspace showing student name, UID, submission timestamp, status badge ("In progress"),
- * running graded points (e.g., "14 / 15 pts graded · 3 of 4 questions · 20 pts total"), section/queue filters, and Previous/Next student navigation.
- * @param {Object} props
- * @param {{ uid: string, name: string, initials: string, submittedAt: string, status: string, section: string }} props.studentSubmission
- * @param {{ earnedPoints: number, gradedMaxPoints: number, gradedQuestionsCount: number, totalQuestionsCount: number, examMaxPoints: number }} props.scoreSummary
- * @param {{ currentIndex: number, totalCount: number, sectionFilter: string|null, activeRegradeQueueId: string|null }} props.navigationState
- * @param {() => void} props.onPreviousStudent - Navigates to the prior submission in the active queue
- * @param {() => void} props.onNextStudent - Requests/navigates to the next allocated submission in under 3 seconds
- * @param {(section: string|null) => void} props.onChangeSectionFilter - Filters grading queue by course discussion section
- * @param {(uid: string) => void} props.onDownloadSingleStudentPdf - Directly downloads this student's PDF report
- */
-export function WorkspaceHeader({
-  studentSubmission,
-  scoreSummary,
-  navigationState,
-  onPreviousStudent,
-  onNextStudent,
-  onChangeSectionFilter,
-  onDownloadSingleStudentPdf,
-}) {}
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { formatPoints, plural } from '@/lib/rubric'
+import { icon } from './icon'
+import styles from './workspaceHeader.module.css'
+
+function formatUploaded(iso) {
+  const date = new Date(iso)
+  const day = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `${day} at ${time}`
+}
+
+function status({ gradedCount, questionCount }) {
+  if (questionCount && gradedCount === questionCount) return { label: 'Graded', tone: 'outline' }
+  return gradedCount ? { label: 'In progress', tone: 'soft' } : { label: 'Not started', tone: 'neutral' }
+}
+
+export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, position, onPrevious, onNext }) {
+  const { label, tone } = status(progress)
+
+  return (
+    <header className={styles.header}>
+      <div className={styles.student}>
+        <Avatar name={student.name} className={styles.avatar} />
+        <div className={styles.details}>
+          <h1 className={styles.name}>{student.name}</h1>
+          <p className={styles.meta}>
+            Student ID {student.uid}
+            {uploadedAt && ` · Uploaded ${formatUploaded(uploadedAt)}`}
+          </p>
+        </div>
+        <Badge tone={tone}>{label}</Badge>
+      </div>
+
+      <div className={styles.progress}>
+        <div className={styles.score}>
+          <p className={styles.scoreValue}>
+            {progress.gradedCount ? `${progress.earned} / ${formatPoints(progress.gradedPoints)} graded` : 'Not graded yet'}
+          </p>
+          <p className={styles.meta}>
+            {progress.gradedCount} of {plural(progress.questionCount, 'question')} · {formatPoints(totalPoints)} total
+          </p>
+        </div>
+        <nav className={styles.navigation} aria-label="Students">
+          <Button onClick={onPrevious} disabled={position.index === 0}>
+            <ChevronLeft {...icon} size={16} />
+            Previous
+          </Button>
+          <span className={styles.position}>
+            {position.index + 1} / {position.count}
+          </span>
+          <Button onClick={onNext} disabled={position.index === position.count - 1}>
+            <ChevronRight {...icon} size={16} />
+            Next student
+          </Button>
+        </nav>
+      </div>
+    </header>
+  )
+}

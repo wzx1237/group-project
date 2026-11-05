@@ -23,6 +23,7 @@ next-env.d.ts
 /data/db.tmp
 /data/uploads/
 /data/submissions/
+/backend/logs/
 
 # OS
 .DS_Store

@@ -28,10 +28,15 @@ An exam and its enrolled student papers must exist in PostgreSQL. Existing
 `Database.add_exam`, `add_student_paper`, and `assign_grader` methods remain
 available with unchanged signatures. `StudentPaper.scanned_PDF` is a PDF path
 relative to `data/` (or an absolute path inside `GRADEFLOW_DATA_DIR`). Paths
-outside that directory are refused. Uploads still in the legacy JSON pipeline
-are not automatically registered as PostgreSQL student papers by these APIs.
+outside that directory are refused.
 
-Instructors may initialize a question with `POST /api/exams/{exam_ID}/rubric/questions`:
+The `/api/assignments/{assignment_id}` routes also accept upload-store IDs such as
+`quiz-1` (`data/db.json`). The first request creates the matching `Exam` row
+(`Exam.slug`), and every request adds a `StudentPaper` for each scan matched or
+assigned to an enrolled student. Unassigning a scan keeps its paper and grades.
+
+TAs and instructors have the same rubric permissions. Either may initialize a
+question with `POST /api/exams/{exam_ID}/rubric/questions`:
 
 ```json
 {"qid":"Q1","grading_method":"manual","total_score":"5.00"}
@@ -55,11 +60,12 @@ stores the grading method; automatic answer recognition is outside this change.
 5. Send the selected Label IDs and comment to grade/regrade, with the token from
    the workspace. Then call `start` again to continue to the next answer.
 
-`start` persists ownership in `Mapping`; other TAs cannot edit that answer.
+`start` records who is grading an answer in `Mapping`, so other TAs' `start` skips it.
 `POST /api/exams/{exam_ID}/students/{UID}/questions/{QID}/release` releases an own
 unfinished answer. Claims have no automatic expiration; explicitly release work
-when leaving the grading screen. Instructors may review/save other assigned
-answers but do not silently replace their owner. No DB lock spans browser editing.
+when leaving the grading screen. TAs and instructors may open and save any answer
+in their course without replacing its owner, and either may reassign work. No DB
+lock spans browser editing.
 
 ## Reads and saves
 
@@ -70,6 +76,7 @@ answers but do not silently replace their owner. No DB lock spans browser editin
 | POST | `/exams/{exam_ID}/students/{UID}/questions/{QID}/grade` | First decision, HTTP 201 |
 | PUT | `/exams/{exam_ID}/students/{UID}/questions/{QID}/grade` | Replace an existing decision, HTTP 200, preserving record ID |
 | POST | `/exams/{exam_ID}/questions/{QID}/rubric/labels` | Add a criterion and requeue every mapping of that exam/question |
+| GET | `/assignments/{assignment_id}/decisions` | Every saved decision for enrolled students, as `{UID: {QID: decision}}` |
 
 Grade/regrade body:
 
@@ -78,14 +85,20 @@ Grade/regrade body:
 ```
 
 The optional compatibility field `directory_ID` must equal the authenticated
-actor; omitting it is recommended. `labels: []` is a valid graded zero.
+actor; omitting it is recommended. `labels: []` saves the comment but leaves the
+answer ungraded: its score is `null` and its mapping stays `InProgress`. A graded
+zero is a 0-point label such as "No credit".
 Comments are student-visible feedback; private internal notes are not supported
 by this schema/API. Comments `null` clear the current comment.
 
-Scores are the direct **sum of signed selected Label contributions**, using
-Decimal: `+5` and `-1` yield `4`; only `-1` yields `-1`. Full marks are not added
-implicitly. Duplicate labels and labels from another exam/question are rejected.
-Contributions and totals must fit NUMERIC(5,2) without rounding.
+Each question's `scoring` decides where its score starts. A `deduct` question starts
+at full points and an `add` question starts at 0; questions default to `add`. The
+signed selected Label contributions are added to that start, and the result is kept
+between 0 and the question's points. On a 5-point `add` question, `+5` and `-1`
+yield `4` and only `-1` yields `0`. On a 5-point `deduct` question, only `-2` yields
+`3`, and `0`-point "Correct" yields `5`. Changing a question's points or scoring recalculates
+its saved scores. Duplicate labels and labels from another exam/question are rejected.
+Label contributions must fit NUMERIC(5,2) without rounding.
 
 All grade/regrade requests require `If-Match: <grade_token>`. Add-label requests
 require `If-Match: <rubric_token>`, with body:

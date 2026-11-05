@@ -1,6 +1,7 @@
-/* Colors from the Figma file. Light only for now: Figma has no dark design. */
+/* Colors from the Figma file. */
 :root {
   color-scheme: light;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --bg: #f2f4f4;
   --card: #ffffff;
   --border: #dfe5e5;

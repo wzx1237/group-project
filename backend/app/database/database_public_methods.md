@@ -397,7 +397,7 @@ No actor metadata means actor_id=null; db_user still identifies the PostgreSQL s
 - `Database.from_pool(pool)` borrows the app pool; `close()` flushes audit but only closes an owned pool.
 - `add_staff(directory_ID, name, email=None, *, role)` creates only; `app.add_staff` remains the CLI upsert operation.
 - `add_staff_to_course(course_ID, directory_ID)` adds membership only. Role lives in `staff`, as defined by migration 001.
-- `add_question` / `edit_question(QID, title, grading_method, total_scores, region=None, *, exam_ID)` manage question definitions. `remove_question(QID, *, exam_ID)` cascades current assignments and decisions.
+- `add_question` / `edit_question(QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID)` manage question definitions. `scoring` is `'add'` (starts at 0) or `'deduct'` (starts at full points); `edit_question` recalculates the question's saved scores. `remove_question(QID, *, exam_ID)` cascades current assignments and decisions.
 - `edit_label(label_ID, title, description, deduction, *, exam_ID)` and `remove_label(label_ID, *, exam_ID)` recalculate all affected current decisions in the same transaction.
 - `validate_graders` and `recalculate_score` are private helpers, named `_validate_graders` and `_recalculate_score`.
 - `Decision.internal_note` is staff-only; `comments_remark` is student feedback. Staff API responses may include both; student reports must use an explicit field whitelist.

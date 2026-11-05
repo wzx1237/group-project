@@ -1,15 +1,8 @@
-import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/context/AuthContext';
 import { CourseProvider } from '@/context/CourseContext';
 import { GradingSessionProvider } from '@/context/GradingSessionContext';
 import '@/exam-distribution/styles.css';
 import './globals.css';
-
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-});
 
 export const metadata = {
   title: {
@@ -23,10 +16,9 @@ export const metadata = {
   },
 };
 
-
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body>
         <a href="#main-content" className="skip-to-content-link">
           Skip to main content
