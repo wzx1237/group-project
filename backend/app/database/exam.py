@@ -19,9 +19,9 @@ class Exam:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO Exam (course_ID, exam_name)
+          INSERT INTO Exam (course_id, exam_name)
           VALUES (%s, %s)
-          RETURNING exam_ID
+          RETURNING exam_id
           """,
           (course_ID, exam_name)
         )
@@ -41,7 +41,7 @@ class Exam:
           """
           SELECT *
           FROM Exam
-          WHERE exam_ID = %s
+          WHERE exam_id = %s
           """, (exam_ID, )
         )
         return self.get_one(cursor)
@@ -54,12 +54,7 @@ class Exam:
     try:
       with self.get_worker() as cursor:
         cursor.execute(
-          """
-          SELECT exam_ID, exam_name
-          FROM Exam
-          WHERE course_ID = %s
-          ORDER BY exam_ID
-          """,
+          """SELECT exam_id, exam_name FROM Exam WHERE course_id = %s ORDER BY exam_id""",
           (course_ID, )
         )
         return self.get_all(cursor)

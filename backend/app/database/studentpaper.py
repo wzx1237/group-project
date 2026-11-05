@@ -21,11 +21,11 @@ class StudentPaper:
         # Keep membership locked until the new paper has been committed.
         cursor.execute(
           """
-          SELECT en.UID
+          SELECT en.uid
           FROM enrollment AS en
-          JOIN Exam AS e ON e.course_ID = en.course_ID
+          JOIN Exam AS e ON e.course_id = en.course_id
           WHERE e.exam_ID = %s
-            AND en.UID = %s
+            AND en.uid = %s
           FOR SHARE OF en, e
           """,
           (exam_ID, UID)
@@ -34,9 +34,9 @@ class StudentPaper:
           raise ValueError("Student is not enrolled in the exam's course")
         cursor.execute(
           """
-          INSERT INTO StudentPaper (exam_ID, UID, scanned_PDF, comments)
+          INSERT INTO StudentPaper (exam_ID, uid, scanned_PDF, comments)
           VALUES (%s, %s, %s, %s)
-          ON CONFLICT (exam_ID, UID) DO NOTHING
+          ON CONFLICT (exam_ID, uid) DO NOTHING
           """,
           (exam_ID, UID, scanned_PDF, comments)
         )
@@ -55,7 +55,7 @@ class StudentPaper:
         """
         UPDATE StudentPaper
         SET scanned_PDF = COALESCE(%s, scanned_PDF), comments = COALESCE(%s, comments)
-        WHERE UID = %s AND exam_ID = %s
+        WHERE uid = %s AND exam_ID = %s
         """,
         (scanned_PDF, comments, UID, exam_ID)
       )

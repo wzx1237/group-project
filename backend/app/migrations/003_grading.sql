@@ -6,7 +6,7 @@
 -- Replaces the separate course_exam join table for the one-course-per-exam case.
 CREATE TABLE Exam (
   exam_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  course_ID INT NOT NULL REFERENCES course(course_ID) ON DELETE CASCADE,
+  course_id INT NOT NULL REFERENCES course(course_id) ON DELETE CASCADE,
   exam_name VARCHAR(100) NOT NULL,
   due DATE,
   blank_pdf TEXT,             -- file path
@@ -16,10 +16,10 @@ CREATE TABLE Exam (
 -- Name/email/directory identity are read from student, not duplicated per paper.
 CREATE TABLE StudentPaper (
   exam_ID INT NOT NULL REFERENCES Exam(exam_ID) ON DELETE CASCADE,
-  UID TEXT NOT NULL REFERENCES student(UID) ON DELETE CASCADE,
+  uid TEXT NOT NULL REFERENCES student(uid) ON DELETE CASCADE,
   scanned_PDF TEXT NOT NULL,
   comments TEXT,
-  PRIMARY KEY (exam_ID, UID)
+  PRIMARY KEY (exam_ID, uid)
 );
 
 -- Preserve the grading model; relationship tables contain current rows only.
@@ -44,20 +44,20 @@ CREATE TABLE Label (
 
 CREATE TABLE Mapping (
   exam_ID INT NOT NULL,
-  UID TEXT,
+  uid TEXT,
   QID VARCHAR(50),
-  directory_ID TEXT,
+  directory_id TEXT,
   status VARCHAR(50),
-  PRIMARY KEY (exam_ID, UID, QID),
-  FOREIGN KEY (exam_ID, UID) REFERENCES StudentPaper(exam_ID, UID) ON DELETE CASCADE,
+  PRIMARY KEY (exam_ID, uid, QID),
+  FOREIGN KEY (exam_ID, uid) REFERENCES StudentPaper(exam_ID, uid) ON DELETE CASCADE,
   FOREIGN KEY (exam_ID, QID) REFERENCES Rubric(exam_ID, QID) ON DELETE CASCADE,
-  FOREIGN KEY (directory_ID) REFERENCES staff(directory_ID) ON DELETE SET NULL
+  FOREIGN KEY (directory_id) REFERENCES staff(directory_id) ON DELETE SET NULL
 );
 
 CREATE TABLE Decision (
   exam_ID INT NOT NULL,
   record_ID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  UID TEXT NOT NULL,
+  uid TEXT NOT NULL,
   QID VARCHAR(50) NOT NULL,
   scores DECIMAL(5, 2),
   comments_remark TEXT,             -- available to the student only
@@ -65,8 +65,8 @@ CREATE TABLE Decision (
   internal_note TEXT,               -- available to the grader only
   UNIQUE (exam_ID, record_ID),
   -- One current decision per assigned student-question, as in the prototype.
-  UNIQUE (exam_ID, UID, QID),
-  FOREIGN KEY (exam_ID, UID, QID) REFERENCES Mapping(exam_ID, UID, QID) ON DELETE CASCADE
+  UNIQUE (exam_ID, uid, QID),
+  FOREIGN KEY (exam_ID, uid, QID) REFERENCES Mapping(exam_ID, uid, QID) ON DELETE CASCADE
 );
 
 CREATE TABLE Rubric_Label (
@@ -82,11 +82,11 @@ CREATE TABLE Decision_Label (
   exam_ID INT NOT NULL,
   record_ID INT,
   label_ID INT,
-  directory_ID TEXT,
+  directory_id TEXT,
   PRIMARY KEY (exam_ID, record_ID, label_ID),
   FOREIGN KEY (exam_ID, record_ID) REFERENCES Decision(exam_ID, record_ID) ON DELETE CASCADE,
   FOREIGN KEY (exam_ID, label_ID) REFERENCES Label(exam_ID, label_ID) ON DELETE CASCADE,
-  FOREIGN KEY (directory_ID) REFERENCES staff(directory_ID) ON DELETE SET NULL
+  FOREIGN KEY (directory_id) REFERENCES staff(directory_id) ON DELETE SET NULL
 );
 
 -- Deliberately no redundant course_id in StudentPaper/Mapping/Decision_Label.

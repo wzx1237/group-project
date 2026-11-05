@@ -21,7 +21,7 @@ class Course:
           """
           INSERT INTO course (code, term, title)
           VALUES (%s, %s, %s)
-          RETURNING course_ID
+          RETURNING course_id
           """,
           (code, term, title)
         )
@@ -30,21 +30,21 @@ class Course:
       logger.exception("create course failed", extra={"extra": {"code": code, "term": term}})
       raise
 
-  def get_course_enrollment(self, course_ID: int) -> List[Dict[str, Any]]:
+  def get_course_enrollment(self, course_id: int) -> List[Dict[str, Any]]:
     """Return enrolled student IDs and names for one course."""
     try:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          SELECT en.UID, s.name
+          SELECT en.uid, s.name
           FROM enrollment AS en
-          JOIN student AS s ON s.UID = en.UID
-          WHERE en.course_ID = %s
-          ORDER BY en.UID
+          JOIN student AS s ON s.uid = en.uid
+          WHERE en.course_id = %s
+          ORDER BY en.uid
           """,
-          (course_ID, )
+          (course_id, )
         )
         return self.get_all(cursor)
     except psycopg.Error as error:
-      logger.exception("query enrollment failed", extra={"extra": {"course_ID": course_ID}})
+      logger.exception("query enrollment failed", extra={"extra": {"course_id": course_id}})
       raise

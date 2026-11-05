@@ -15,26 +15,21 @@ class Student:
 
   def get_student(self, UID: str, *, exam_ID: int | None = None) -> Dict[str, Any] | None:
     """Return global student data, or student data joined to one exam paper."""
-    UID = self.normalize_uid(UID)
     try:
       with self.get_worker() as cursor:
         if exam_ID is None:
           cursor.execute(
-            """
-            SELECT UID, name, email
-            FROM student
-            WHERE UID = %s
-            """,
+            """SELECT uid, name, email FROM student WHERE uid = %s""",
             (UID, )
           )
         else:
           # Student identity is global; the PDF and comments belong to one exam.
           cursor.execute(
             """
-            SELECT s.UID, s.name, s.email, p.exam_ID, p.scanned_PDF, p.comments
+            SELECT s.uid, s.name, s.email, p.exam_ID, p.scanned_PDF, p.comments
             FROM student AS s
-            JOIN StudentPaper AS p ON p.UID = s.UID
-            WHERE s.UID = %s
+            JOIN StudentPaper AS p ON p.uid = s.uid
+            WHERE s.uid = %s
               AND p.exam_ID = %s
             """,
             (UID, exam_ID)
@@ -50,9 +45,9 @@ class Student:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO student (UID, name, email)
+          INSERT INTO student (uid, name, email)
           VALUES (%s, %s, %s)
-          ON CONFLICT (UID) DO NOTHING
+          ON CONFLICT (uid) DO NOTHING
           """,
           (UID, name, email)
         )
@@ -67,9 +62,9 @@ class Student:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO enrollment (course_ID, UID)
+          INSERT INTO enrollment (course_id, uid)
           VALUES (%s, %s)
-          ON CONFLICT (course_ID, UID) DO NOTHING
+          ON CONFLICT (course_id, uid) DO NOTHING
           """,
           (course_ID, UID)
         )

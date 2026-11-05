@@ -117,11 +117,3 @@ class Database(
   def get_all(self, cursor: psycopg.Cursor[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Fetch the remaining rows from a cursor that has already executed a query."""
     return cursor.fetchall()
-
-  @staticmethod
-  def normalize_uid(uid):
-    """Validate a nine-digit identity without losing leading zeroes."""
-    import re
-    if not isinstance(uid, str) or re.fullmatch(r'[0-9]{9}', uid) is None:
-      raise ValueError('UID must be a nine-digit string')
-    return uid

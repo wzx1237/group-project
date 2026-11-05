@@ -9,23 +9,22 @@ __all__ = ["Decision"]
 class Decision:
   """Business methods sharing Database transaction and audit handling."""
 
-  def get_grading_decision(self, UID: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
+  def get_grading_decision(self, uid: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
     '''
-    input: student UID (dtype: string or int)
-    output: a dictionary of grading decision, in format {record_ID: ..., UID: ..., QID: ..., scores: ..., comments_remark: ...)
+    input: student UID (dtype: string)
+    output: a dictionary of grading decision, in format {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...)
     '''
-    UID = self.normalize_uid(UID)
     try:
       # using 'with' to handle commit() and pool.connection return our connection to our pool
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND UID = %s""", 
-          (exam_ID, UID)
+          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""", 
+          (exam_ID, uid)
         )
         return self.get_all(cursor)    # search with value, could have multiple results
     except psycopg.Error as error:
       # if exception happens, save it to our log
-      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
+      logger.exception("query student UID failed", extra={"extra": {"UID": uid}})
       raise
 
   def get_student_total_score(self, UID: str, *, exam_ID: int) -> float | None:
@@ -33,12 +32,11 @@ class Decision:
     input: student UID (dtype: string or int)
     output: the student scores for this exam
     '''
-    UID = self.normalize_uid(UID)
     try:
       # using 'with' to handle commit() and pool.connection return our connection to our pool
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT COALESCE(SUM(scores), 0) AS Total FROM Decision WHERE Decision.exam_ID = %s AND UID = %s""", 
+          """SELECT COALESCE(SUM(scores), 0) AS Total FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""", 
           (exam_ID, UID)
         )
         result = self.get_one(cursor)    # only one sun will be returned, use fetchone
@@ -51,7 +49,7 @@ class Decision:
   def get_decision(self, record_ID: int, *, exam_ID: int) -> Dict[str, Any] | None:
     '''
     input: the record ID for certain decision
-    output: the info about our grading decision, format: {record_ID: ..., UID: ..., QID: ..., scores: ..., comments_remark: ...}
+    output: the info about our grading decision, format: {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...}
     '''
     try:
       with self.get_worker() as cursor:
@@ -68,12 +66,12 @@ class Decision:
   def get_decision_by_student_question(self, UID: str, QID: str, *, exam_ID: int) -> Dict[str, Any] | None:
     '''
     input: the student UID and QID for certain grading result
-    output: the info about our grading decision, format: {record_ID: ..., UID: ..., QID: ..., scores: ..., comments_remark: ...)
+    output: the info about our grading decision, format: {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...)
     '''
     try:
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND UID = %s AND QID = %s""", 
+          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""", 
           (exam_ID, UID, QID)
         )
         return self.get_one(cursor)    # promise to be UNIQUE(UID, QID), only one return
@@ -95,10 +93,10 @@ class Decision:
         # without changing the original schema or overwriting an existing grade.
         cursor.execute(
           """
-          SELECT UID
+          SELECT uid
           FROM Mapping
           WHERE Mapping.exam_ID = %s
-            AND UID = %s
+            AND uid = %s
             AND QID = %s
           FOR NO KEY UPDATE
           """,
@@ -109,7 +107,7 @@ class Decision:
           raise ValueError("The student answer does not exist")
         # check whether we already have this decision; if have, you should use update_decision
         cursor.execute(
-          """SELECT record_ID FROM Decision WHERE Decision.exam_ID = %s AND UID = %s AND QID = %s""", 
+          """SELECT record_ID FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""", 
           (exam_ID, UID, QID)
         )
         if self.get_one(cursor) is not None:
@@ -117,7 +115,7 @@ class Decision:
         # add new decision
         cursor.execute(
           """
-          INSERT INTO Decision (exam_ID, UID, QID, scores, comments_remark)
+          INSERT INTO Decision (exam_ID, uid, QID, scores, comments_remark)
           VALUES (%s, %s, %s, %s, %s)
           RETURNING record_ID
           """,
@@ -144,7 +142,7 @@ class Decision:
     with self.get_worker() as cursor:
       cursor.execute(
         """
-        SELECT l.*, dl.record_ID, dl.directory_ID FROM Decision_Label AS dl
+        SELECT l.*, dl.record_ID, dl.directory_id FROM Decision_Label AS dl
         JOIN Label AS l ON (l.exam_ID, l.Label_ID) = (dl.exam_ID, dl.Label_ID)
         WHERE dl.exam_ID = %s AND dl.record_ID = %s ORDER BY l.Label_ID
         """,
@@ -166,7 +164,7 @@ class Decision:
       if labels:
         cursor.executemany(
           """
-          INSERT INTO Decision_Label (exam_ID, record_ID, Label_ID, directory_ID) VALUES (%s, %s, %s, %s)
+          INSERT INTO Decision_Label (exam_ID, record_ID, Label_ID, directory_id) VALUES (%s, %s, %s, %s)
           """,
           [(exam_ID, record_ID, label, grader) for label, grader in zip(labels, Graders)]
         )
@@ -181,7 +179,7 @@ class Decision:
       self._validate_graders(cursor, [Grader], exam_ID)
       cursor.execute(
         """
-        INSERT INTO Decision_Label (exam_ID, record_ID, Label_ID, directory_ID) VALUES (%s, %s, %s, %s)
+        INSERT INTO Decision_Label (exam_ID, record_ID, Label_ID, directory_id) VALUES (%s, %s, %s, %s)
         ON CONFLICT (exam_ID, record_ID, Label_ID) DO NOTHING
         """,
         (exam_ID, record_ID, label, Grader)
@@ -220,9 +218,9 @@ class Decision:
     for directory_ID in sorted(set(graders)):
       cursor.execute(
         """
-        SELECT cs.directory_ID FROM course_staff AS cs
-        JOIN Exam AS e ON e.course_ID = cs.course_ID
-        WHERE e.exam_ID = %s AND cs.directory_ID = %s
+        SELECT cs.directory_id FROM course_staff AS cs
+        JOIN Exam AS e ON e.course_id = cs.course_id
+        WHERE e.exam_ID = %s AND cs.directory_id = %s
         FOR SHARE OF cs, e
         """, 
         (exam_ID, directory_ID)

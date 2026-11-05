@@ -19,9 +19,9 @@ class Staff:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          SELECT directory_ID, name, email
+          SELECT directory_id, name, email
           FROM staff
-          WHERE directory_ID = %s
+          WHERE directory_id = %s
           """,
           (directory_ID, )
         )
@@ -31,12 +31,12 @@ class Staff:
         # Use the same cursor and transaction for the profile and course list.
         cursor.execute(
           """
-          SELECT c.course_ID, c.code, c.term, c.title, s.role
+          SELECT c.course_id, c.code, c.term, c.title, s.role
           FROM course_staff AS cs
-          JOIN course AS c ON c.course_ID = cs.course_ID
-          JOIN staff AS s ON s.directory_ID = cs.directory_ID
-          WHERE cs.directory_ID = %s
-          ORDER BY c.course_ID
+          JOIN course AS c ON c.course_id = cs.course_id
+          JOIN staff AS s ON s.directory_id = cs.directory_id
+          WHERE cs.directory_id = %s
+          ORDER BY c.course_id
           """,
           (directory_ID, )
         )
@@ -52,7 +52,7 @@ class Staff:
 
   def get_grader_assignments(self, directory_ID: str, *, exam_ID: int) -> List[Dict[str, Any]]:
     '''
-    input: grader_id
+    input: dirctory_id
     output: UID and QID tell TA should grade which question from which student, format {UID: ..., QID: ..., status: ...}
     '''
     try:
@@ -62,7 +62,7 @@ class Staff:
           SELECT *
           FROM Mapping
           WHERE Mapping.exam_ID = %s
-            AND directory_ID = %s
+            AND directory_id = %s
           """, 
           (exam_ID, directory_ID)
         )
@@ -83,11 +83,11 @@ class Staff:
         # Check enrollment and course membership in the same transaction as assignment.
         cursor.execute(
           """
-          SELECT en.UID
+          SELECT en.uid
           FROM enrollment AS en
-          JOIN Exam AS e ON e.course_ID = en.course_ID
+          JOIN Exam AS e ON e.course_id = en.course_id
           WHERE e.exam_ID = %s
-            AND en.UID = %s
+            AND en.uid = %s
           FOR SHARE OF en, e
           """,
           (exam_ID, UID)
@@ -96,11 +96,11 @@ class Staff:
           raise ValueError("Student is not enrolled in the exam's course")
         cursor.execute(
           """
-          SELECT cs.directory_ID
+          SELECT cs.directory_id
           FROM course_staff AS cs
-          JOIN Exam AS e ON e.course_ID = cs.course_ID
+          JOIN Exam AS e ON e.course_id = cs.course_id
           WHERE e.exam_ID = %s
-            AND cs.directory_ID = %s
+            AND cs.directory_id = %s
           FOR SHARE OF cs, e
           """,
           (exam_ID, directory_ID)
@@ -111,7 +111,7 @@ class Staff:
         # With multiple exams, the assignment key is (exam_ID, UID, QID).
         cursor.execute(
           """
-          INSERT INTO Mapping (exam_ID, UID, QID, directory_ID, status)
+          INSERT INTO Mapping (exam_ID, uid, QID, directory_id, status)
           VALUES (%s, %s, %s, %s, %s)
           """, (exam_ID, UID, QID, directory_ID, status)
         )
@@ -134,7 +134,7 @@ class Staff:
           UPDATE Mapping
           SET status = %s
           WHERE Mapping.exam_ID = %s
-            AND UID = %s
+            AND uid = %s
             AND QID = %s
           """, 
           (status, exam_ID, UID, QID)
@@ -151,9 +151,9 @@ class Staff:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO staff (directory_ID, name, email, role)
+          INSERT INTO staff (directory_id, name, email, role)
           VALUES (%s, %s, %s, %s)
-          ON CONFLICT (directory_ID) DO NOTHING
+          ON CONFLICT (directory_id) DO NOTHING
           """,
           (directory_ID.lower(), name, email, role.lower())
         )
@@ -168,9 +168,9 @@ class Staff:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO course_staff (course_ID, directory_ID)
+          INSERT INTO course_staff (course_id, directory_id)
           VALUES (%s, %s)
-          ON CONFLICT (course_ID, directory_ID) DO NOTHING
+          ON CONFLICT (course_id, directory_id) DO NOTHING
           """,
           (course_ID, directory_ID.lower())
         )
