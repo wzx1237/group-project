@@ -172,6 +172,7 @@ def get_decision(assignment_id: str,student_uid: str,qid: str,svc: Service):
 def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionIn,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     if body.score_override is not None:
+        # TODO: feature: allow customized deduction/points
         raise HTTPException(422,'Scores are derived from selected criteria; overrides are not supported')
     try:
         labels=[int(x) for x in body.criteria]
@@ -190,10 +191,12 @@ def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionI
 def regrade_queues(assignment_id: str,svc: Service,qid: str | None=None):
     # Named independent queues need their own model; never pretend Mapping.status is one.
     with svc.access(resolve_exam(svc, assignment_id)):
+        # TODO: finish the regrade queue
         raise HTTPException(501,'Named regrade queues are not implemented')
 
 
 @router.post('/regrade-queues/{queue_id}/students/{student_uid}/resolve',response_model=Decision)
 def resolve_regrade(assignment_id: str,queue_id: str,student_uid: str,body: DecisionIn,svc: Service):
     with svc.access(resolve_exam(svc, assignment_id)):
+        # TODO: finished the regrade queue
         raise HTTPException(501,'Named regrade queues are not implemented')
