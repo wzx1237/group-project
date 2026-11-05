@@ -43,9 +43,12 @@ class GradingService:
             with self.db.get_connection() as conn:
                 conn.execute("SET LOCAL lock_timeout = '5s'")
                 conn.execute("SET LOCAL statement_timeout = '15s'")
-                member = conn.execute('''SELECT cs.role FROM course_staff cs
+                # One short database transaction per request; never hold a lock while a user edits.
+                conn.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam,))
+                member = conn.execute('''SELECT s.role FROM course_staff cs
+                    JOIN staff s USING(directory_id)
                     JOIN exam e USING(course_id)
-                    WHERE e.exam_id=%s AND cs.directory_id=%s FOR SHARE OF cs,e''',
+                    WHERE e.exam_id=%s AND cs.directory_id=%s FOR SHARE OF cs,e,s''',
                                       (exam, self.actor)).fetchone()
                 if member is None:
                     raise HTTPException(403, 'Not a member of this exam course')

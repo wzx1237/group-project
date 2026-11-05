@@ -1,4 +1,4 @@
-"""Staff profiles, course roles, and grading task assignments."""
+"""Staff profiles, global roles, and grading task assignments."""
 
 
 import psycopg
@@ -14,7 +14,7 @@ class Staff:
   """Methods provided to Database; this class does not create its own pool."""
 
   def get_staff(self, directory_ID: str) -> Dict[str, Any] | None:
-    """Return a staff profile with its related courses and course-specific roles."""
+    """Return a staff profile with its related courses and the global staff role."""
     try:
       with self.get_worker() as cursor:
         cursor.execute(
@@ -31,9 +31,10 @@ class Staff:
         # Use the same cursor and transaction for the profile and course list.
         cursor.execute(
           """
-          SELECT c.course_ID, c.code, c.term, c.title, cs.role
+          SELECT c.course_ID, c.code, c.term, c.title, s.role
           FROM course_staff AS cs
           JOIN course AS c ON c.course_ID = cs.course_ID
+          JOIN staff AS s ON s.directory_ID = cs.directory_ID
           WHERE cs.directory_ID = %s
           ORDER BY c.course_ID
           """,
@@ -72,7 +73,7 @@ class Staff:
       logger.exception("query directory_ID failed", extra={"extra": {"directory_ID": directory_ID}})
       raise
 
-  def assign_grader(self, UID: int, QID: str, directory_ID: str, status: str = "Pending", *, exam_ID: int) -> bool:
+  def assign_grader(self, UID: str, QID: str, directory_ID: str, status: str = "Pending", *, exam_ID: int) -> bool:
     '''
     input: UID, QID, Grader_ID to indicate which question should be assigned to which TA
     output: whether our assignment done well
@@ -120,7 +121,7 @@ class Staff:
       logger.exception("insertion failed, possibly primary key conflict", extra={"extra": {"UID": UID, "QID": QID}})
       raise
 
-  def update_assignment_status(self, UID: int, QID: str, status: str, *, exam_ID: int) -> bool:
+  def update_assignment_status(self, UID: str, QID: str, status: str, *, exam_ID: int) -> bool:
     '''
     input: the UID, QID and new status to our assignment
     output: whether our update is success
@@ -144,34 +145,34 @@ class Staff:
       logger.exception("update assignment status failed", extra={"extra": {"UID": UID, "QID": QID}})
       raise
 
-  def add_staff(self, directory_ID: str, name: str, email: str | None = None) -> bool:
+  def add_staff(self, directory_ID: str, name: str, email: str | None = None, *, role: str) -> bool:
     """Create a global staff member; return False for an existing directory ID."""
     try:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO staff (directory_ID, name, email)
-          VALUES (%s, %s, %s)
+          INSERT INTO staff (directory_ID, name, email, role)
+          VALUES (%s, %s, %s, %s)
           ON CONFLICT (directory_ID) DO NOTHING
           """,
-          (directory_ID, name, email)
+          (directory_ID.lower(), name, email, role.lower())
         )
         return cursor.rowcount > 0
     except psycopg.Error as error:
       logger.exception("create staff failed", extra={"extra": {"directory_ID": directory_ID}})
       raise
 
-  def add_staff_to_course(self, course_ID: int, directory_ID: str, role: str) -> bool:
-    """Add a course staff role; return False without changing an existing membership."""
+  def add_staff_to_course(self, course_ID: int, directory_ID: str) -> bool:
+    """Add a course membership; return False without changing an existing membership."""
     try:
       with self.get_worker() as cursor:
         cursor.execute(
           """
-          INSERT INTO course_staff (course_ID, directory_ID, role)
-          VALUES (%s, %s, %s)
+          INSERT INTO course_staff (course_ID, directory_ID)
+          VALUES (%s, %s)
           ON CONFLICT (course_ID, directory_ID) DO NOTHING
           """,
-          (course_ID, directory_ID, role)
+          (course_ID, directory_ID.lower())
         )
         return cursor.rowcount > 0
     except psycopg.Error as error:

@@ -13,7 +13,7 @@ class StudentPaper:
   """Methods provided to Database; this class does not create its own pool."""
 
   def add_student_paper(
-    self, UID: int, scanned_PDF: str, comments: str | None = None, *, exam_ID: int
+    self, UID: str, scanned_PDF: str, comments: str | None = None, *, exam_ID: int
   ) -> bool:
     """Add one enrolled student's exam paper without overwriting an existing paper."""
     try:
@@ -45,7 +45,7 @@ class StudentPaper:
       logger.exception("create student paper failed", extra={"extra": {"UID": UID, "exam_ID": exam_ID}})
       raise
 
-  def update_student_paper(self, UID: int, scanned_PDF: str | None = None, comments: str | None = None, *, exam_ID: int) -> bool:
+  def update_student_paper(self, UID: str, scanned_PDF: str | None = None, comments: str | None = None, *, exam_ID: int) -> bool:
     """Update the supplied PDF reference and/or comment; return False if missing."""
     if scanned_PDF is None and comments is None:
       raise ValueError('At least one of scanned_PDF or comments must be provided')

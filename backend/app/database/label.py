@@ -52,3 +52,29 @@ class Label:
       # if exception happens, save it to our log
       logger.exception("error occurs when create new label", extra={"extra": {"title": title}})
       raise
+
+  def edit_label(self, label_ID, title, description, deduction, *, exam_ID):
+    return self._change_label(label_ID, exam_ID, (title,description,deduction))
+
+  def remove_label(self, label_ID, *, exam_ID):
+    return self._change_label(label_ID, exam_ID, None)
+
+  def _change_label(self, label_ID, exam_ID, values):
+    """Change a definition and all cached scores atomically, including last-label removal.
+
+    The exam row serializes definition edits with authenticated grading writes.
+    Capture affected decisions before a DELETE cascades away their label links.
+    """
+    with self.get_worker() as cursor:
+      cursor.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam_ID,))
+      cursor.execute('SELECT record_id FROM decision_label WHERE exam_id=%s AND label_id=%s ORDER BY record_id', (exam_ID,label_ID))
+      records = [row['record_id'] for row in cursor.fetchall()]
+      if values is None:
+        cursor.execute('DELETE FROM label WHERE exam_id=%s AND label_id=%s', (exam_ID,label_ID))
+      else:
+        cursor.execute('UPDATE label SET title=%s,description=%s,deduction=%s WHERE exam_id=%s AND label_id=%s', (*values,exam_ID,label_ID))
+      changed = cursor.rowcount > 0
+      for record in records:
+        self._lock_decision(cursor, record, exam_ID)
+        self._recalculate_score(cursor, record, exam_ID)
+      return changed

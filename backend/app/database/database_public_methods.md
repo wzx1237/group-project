@@ -6,7 +6,7 @@ This release is based on the newly uploaded v2 package, not the earlier single-f
 
 - Python 3.10+ and `psycopg[binary,pool]` are required.
 - Unquoted PostgreSQL column names produce lowercase dictionary keys.
-- UID remains INT; staff directory IDs are lowercase strings.
+- UID is a nine-digit TEXT string; staff directory IDs are lowercase strings.
 - Numeric row fields are Decimal (or None when the schema allows NULL); get_student_total_score returns float or None for an invalid convertible UID.
 - No relationship version column remains. Current relationship rows contain no historical snapshots.
 - get_rubric_labels returns Label fields plus qid; get_decision_label returns Label fields plus record_id and directory_id.
@@ -24,9 +24,9 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 
 | Shape | Fields and Python value types |
 |---|---|
-| StudentRow | uid: int; name: str; email: str or None |
-| StudentPaperRow | uid: int; name: str; email: str or None; exam_id: int; scanned_pdf: str; comments: str or None |
-| EnrollmentRow | uid: int; name: str |
+| StudentRow | uid: str; name: str; email: str or None |
+| StudentPaperRow | uid: str; name: str; email: str or None; exam_id: int; scanned_pdf: str; comments: str or None |
+| EnrollmentRow | uid: str; name: str |
 | CourseExamRow | exam_id: int; exam_name: str |
 | StaffCourseRow | course_id: int; code: str; term: str; title: str or None; role: str |
 | StaffProfile | directory_id: str; name: str; email: str or None; courses: list[StaffCourseRow] |
@@ -35,8 +35,8 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 | LabelRow | exam_id: int; label_id: int; title: str; description: str or None; deduction: Decimal or None |
 | RubricLabelRow | All LabelRow fields plus qid: str |
 | DecisionLabelRow | All LabelRow fields plus record_id: int; directory_id: str or None |
-| MappingRow | exam_id: int; uid: int; qid: str; directory_id: str or None; status: str or None |
-| DecisionRow | exam_id: int; record_id: int; uid: int; qid: str; scores: Decimal or None; comments_remark: str or None |
+| MappingRow | exam_id: int; uid: str; qid: str; directory_id: str or None; status: str or None |
+| DecisionRow | exam_id: int; record_id: int; uid: str; qid: str; scores: Decimal or None; comments_remark: str or None |
 
 ## Methods
 
@@ -120,14 +120,14 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 ### `get_grading_decision`
 
 - **Module:** `database.decision`
-- **Input:** `UID: int | str, *, exam_ID: int`
+- **Input:** `UID: str, *, exam_ID: int`
 - **Output:** list[DecisionRow] | None.
 - **Functionality:** Return all saved decisions for one student in one exam.
 
 ### `get_student_total_score`
 
 - **Module:** `database.decision`
-- **Input:** `UID: int | str, *, exam_ID: int`
+- **Input:** `UID: str, *, exam_ID: int`
 - **Output:** float | None.
 - **Functionality:** Return the sum of saved decision scores for one student in one exam.
 
@@ -141,14 +141,14 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 ### `get_decision_by_student_question`
 
 - **Module:** `database.decision`
-- **Input:** `UID: int, QID: str, *, exam_ID: int`
+- **Input:** `UID: str, QID: str, *, exam_ID: int`
 - **Output:** DecisionRow | None.
 - **Functionality:** Return the current decision for one student question in one exam.
 
 ### `save_decision`
 
 - **Module:** `database.decision`
-- **Input:** `UID: int, QID: str, score: float | Decimal=0, comments: str | None=None, *, exam_ID: int`
+- **Input:** `UID: str, QID: str, score: float | Decimal=0, comments: str | None=None, *, exam_ID: int`
 - **Output:** int: generated record_id.
 - **Functionality:** Create the single current decision for an existing student question assignment.
 
@@ -187,13 +187,13 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 - **Output:** bool.
 - **Functionality:** Physically delete one selected label and recalculate the score, including zero after the last removal.
 
-### `validate_graders`
+### `_validate_graders` (private helper)
 - **Module:** `database.decision`
 - **Input:** `cursor, graders: List[str], *, exam_ID: int`
 - **Output:** None.
 - **Functionality:** check whether this grader are assigned to this exam of thsi course
 
-### `recalculate_score`
+### `_recalculate_score` (private helper)
 - **Module:** `database.decision`
 - **Input:** `cursor, record_ID: int, exam_ID: int`
 - **Output:** None.
@@ -281,7 +281,7 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 - **Module:** `database.staff`
 - **Input:** `directory_ID: str`
 - **Output:** StaffProfile | None.
-- **Functionality:** Return staff identity and name together with all related courses and course-specific roles.
+- **Functionality:** Return staff identity and name together with all related courses and global staff role.
 
 ### `get_grader`
 
@@ -300,63 +300,63 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 ### `assign_grader`
 
 - **Module:** `database.staff`
-- **Input:** `UID: int, QID: str, directory_ID: str, status: str='Pending', *, exam_ID: int`
+- **Input:** `UID: str, QID: str, directory_ID: str, status: str='Pending', *, exam_ID: int`
 - **Output:** bool.
 - **Functionality:** Assign one enrolled student question to a staff member belonging to the exam course.
 
 ### `update_assignment_status`
 
 - **Module:** `database.staff`
-- **Input:** `UID: int, QID: str, status: str, *, exam_ID: int`
+- **Input:** `UID: str, QID: str, status: str, *, exam_ID: int`
 - **Output:** bool.
 - **Functionality:** Update the status of one existing exam-specific student question assignment.
 
 ### `add_staff`
 
 - **Module:** `database.staff`
-- **Input:** `directory_ID: str, name: str, email: str | None=None`
+- **Input:** `directory_ID: str, name: str, email: str | None=None, *, role: str`
 - **Output:** bool.
 - **Functionality:** Create a global staff profile without overwriting an existing directory identity.
 
 ### `add_staff_to_course`
 
 - **Module:** `database.staff`
-- **Input:** `course_ID: int, directory_ID: str, role: str`
+- **Input:** `course_ID: int, directory_ID: str`
 - **Output:** bool.
-- **Functionality:** Add a staff member to a course with a course-specific role without changing an existing membership.
+- **Functionality:** Add a staff member to a course with a global staff role without changing an existing membership.
 
 ### `get_student`
 
 - **Module:** `database.student`
-- **Input:** `UID: int | str, *, exam_ID: int | None=None`
+- **Input:** `UID: str, *, exam_ID: int | None=None`
 - **Output:** dict[str, Any] | None; StudentRow without exam_ID, or StudentPaperRow when exam_ID is supplied.
 - **Functionality:** Return global student identity or the student identity joined to a particular exam paper.
 
 ### `add_student`
 
 - **Module:** `database.student`
-- **Input:** `UID: int, name: str, email: str | None=None`
+- **Input:** `UID: str, name: str, email: str | None=None`
 - **Output:** bool.
 - **Functionality:** Create a global student without overwriting an existing student record.
 
 ### `add_student_to_course`
 
 - **Module:** `database.student`
-- **Input:** `course_ID: int, UID: int`
+- **Input:** `course_ID: int, UID: str`
 - **Output:** bool.
 - **Functionality:** Enroll an existing student in an existing course without duplicating the membership.
 
 ### `add_student_paper`
 
 - **Module:** `database.studentpaper`
-- **Input:** `UID: int, scanned_PDF: str, comments: str | None=None, *, exam_ID: int`
+- **Input:** `UID: str, scanned_PDF: str, comments: str | None=None, *, exam_ID: int`
 - **Output:** bool.
 - **Functionality:** Create an exam paper for an enrolled student without overwriting an existing paper.
 
 ### `update_student_paper`
 
 - **Module:** `database.studentpaper`
-- **Input:** `UID: int, scanned_PDF: str | None=None, comments: str | None=None, *, exam_ID: int`
+- **Input:** `UID: str, scanned_PDF: str | None=None, comments: str | None=None, *, exam_ID: int`
 - **Output:** bool.
 - **Functionality:** Update the supplied PDF reference and/or comment of an existing exam paper.
 
@@ -390,3 +390,16 @@ No actor metadata means actor_id=null; db_user still identifies the PostgreSQL s
 ## Logging API
 
 `JsonFormatter(service: str = "database info")` formats runtime LogRecord values as JSON with optional structured extras and exception stacks. `config_logging(log_file: str | os.PathLike | None = None, level: int = logging.INFO, service: str = "database", max_bytes: int = 100 * 1024 * 1024, backup_count: int = 50, console: bool = True) -> None` configures diagnostic handlers. Neither is the durable audit writer.
+
+
+## Integration changes
+
+- `Database.from_pool(pool)` borrows the app pool; `close()` flushes audit but only closes an owned pool.
+- `add_staff(directory_ID, name, email=None, *, role)` creates only; `app.add_staff` remains the CLI upsert operation.
+- `add_staff_to_course(course_ID, directory_ID)` adds membership only. Role lives in `staff`, as defined by migration 001.
+- `add_question` / `edit_question(QID, title, grading_method, total_scores, region=None, *, exam_ID)` manage question definitions. `remove_question(QID, *, exam_ID)` cascades current assignments and decisions.
+- `edit_label(label_ID, title, description, deduction, *, exam_ID)` and `remove_label(label_ID, *, exam_ID)` recalculate all affected current decisions in the same transaction.
+- `validate_graders` and `recalculate_score` are private helpers, named `_validate_graders` and `_recalculate_score`.
+- `Decision.internal_note` is staff-only; `comments_remark` is student feedback. Staff API responses may include both; student reports must use an explicit field whitelist.
+- Apply 004 to repair an already-applied early 003. This does not convert databases bootstrapped from the old combined schemas.sql; back up and plan that conversion separately.
+- Independent named regrade queues, splitting, rubric copy/import and score overrides are not implemented by this change.

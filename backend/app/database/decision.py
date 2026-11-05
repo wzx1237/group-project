@@ -9,17 +9,12 @@ __all__ = ["Decision"]
 class Decision:
   """Business methods sharing Database transaction and audit handling."""
 
-  def get_grading_decision(self, UID: int | str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
+  def get_grading_decision(self, UID: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
     '''
     input: student UID (dtype: string or int)
     output: a dictionary of grading decision, in format {record_ID: ..., UID: ..., QID: ..., scores: ..., comments_remark: ...)
     '''
-    if not isinstance(UID, int):
-      try:
-        UID = int(UID)
-      except (ValueError, TypeError):
-        logger.exception("face error when convert %s to int", UID)
-        return None
+    UID = self.normalize_uid(UID)
     try:
       # using 'with' to handle commit() and pool.connection return our connection to our pool
       with self.get_worker() as cursor:
@@ -33,17 +28,12 @@ class Decision:
       logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
       raise
 
-  def get_student_total_score(self, UID: int | str, *, exam_ID: int) -> float | None:
+  def get_student_total_score(self, UID: str, *, exam_ID: int) -> float | None:
     '''
     input: student UID (dtype: string or int)
     output: the student scores for this exam
     '''
-    if not isinstance(UID, int):
-      try:
-        UID = int(UID)
-      except (ValueError, TypeError):
-        logger.exception("face error when convert %s to int", UID)
-        return None
+    UID = self.normalize_uid(UID)
     try:
       # using 'with' to handle commit() and pool.connection return our connection to our pool
       with self.get_worker() as cursor:
@@ -75,7 +65,7 @@ class Decision:
       logger.exception("we do not have such decision", extra={"extra": {"record_ID": record_ID}})
       raise
 
-  def get_decision_by_student_question(self, UID: int, QID: str, *, exam_ID: int) -> Dict[str, Any] | None:
+  def get_decision_by_student_question(self, UID: str, QID: str, *, exam_ID: int) -> Dict[str, Any] | None:
     '''
     input: the student UID and QID for certain grading result
     output: the info about our grading decision, format: {record_ID: ..., UID: ..., QID: ..., scores: ..., comments_remark: ...)
@@ -92,7 +82,7 @@ class Decision:
       logger.exception("we do not have such decision", extra={"extra": {"UID": UID, "QID": QID}})
       raise
 
-  def save_decision(self, UID: int, QID: str, score: float | Decimal = 0, comments: str | None = None, *, exam_ID: int) -> int:
+  def save_decision(self, UID: str, QID: str, score: float | Decimal = 0, comments: str | None = None, *, exam_ID: int) -> int:
     '''
     input: add a new grading decision (not labels)
     output: the new record_ID
@@ -225,7 +215,7 @@ class Decision:
       raise ValueError(f"Decision {record_ID} does not exist")
     return decision
 
-  def validate_graders(self, cursor, graders, exam_ID: int) -> None:
+  def _validate_graders(self, cursor, graders, exam_ID: int) -> None:
     """Keep each supplied course membership valid through the grading write."""
     for directory_ID in sorted(set(graders)):
       cursor.execute(
@@ -240,7 +230,7 @@ class Decision:
       if self.get_one(cursor) is None:
         raise ValueError("Staff member is not assigned to the exam's course")
 
-  def recalculate_score(self, cursor, record_ID: int, exam_ID: int) -> None:
+  def _recalculate_score(self, cursor, record_ID: int, exam_ID: int) -> None:
     """All rows are current rows now; signed deductions directly form the score."""
     cursor.execute(
       """
@@ -253,6 +243,6 @@ class Decision:
     )
     score = self.get_one(cursor)['score']
     cursor.execute(
-      'UPDATE Decision SET scores = %s WHERE exam_ID = %s AND record_ID = %s',
+      'UPDATE Decision SET scores = %s, updated_at = clock_timestamp() WHERE exam_ID = %s AND record_ID = %s',
       (score, exam_ID, record_ID)
     )

@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 def migrate(url: str, folder: Path = MIGRATIONS) -> list[str]:
     """Run the .sql files in `folder` that haven't run yet, in name order, all or nothing."""
     with psycopg.connect(url, row_factory=dict_row) as conn:
+        # Serialize migration startup across workers; the caller owns one transaction.
+        conn.execute("SELECT pg_advisory_xact_lock(435026)")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migration (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
         )
