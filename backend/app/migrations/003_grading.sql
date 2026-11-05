@@ -1,7 +1,7 @@
--- Database v2 current-state schema. For a NEW empty database only.
--- Fresh install only; migrate_v2.sql handles the previous versioned schema.
+-- Grading tables extend the shared database after migrations 001 and 002.
+-- Base identity/course tables are owned by 001/002 and must not be recreated here.
 -- One exam belongs to one course offering. A course offering is identified by code+term.
-BEGIN;
+
 
 -- Replaces the separate course_exam join table for the one-course-per-exam case.
 CREATE TABLE Exam (
@@ -29,7 +29,7 @@ CREATE TABLE Rubric (
   grading_method VARCHAR(50) NOT NULL,
   total_scores DECIMAL(5, 2),
   title TEXT,
-  region JSON,
+  region JSONB,
   PRIMARY KEY (exam_ID, QID)
 );
 
@@ -61,7 +61,8 @@ CREATE TABLE Decision (
   QID VARCHAR(50) NOT NULL,
   scores DECIMAL(5, 2),
   comments_remark TEXT,             -- available to the student only
-  internal_node TEXT,               -- available to the grader only
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  internal_note TEXT,               -- available to the grader only
   UNIQUE (exam_ID, record_ID),
   -- One current decision per assigned student-question, as in the prototype.
   UNIQUE (exam_ID, UID, QID),
@@ -175,4 +176,34 @@ CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON decision_label
 CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON decision_label
   FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
 
-COMMIT;
+
+
+-- Audit existing base tables without taking ownership of their definitions.
+CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON staff
+ FOR EACH ROW EXECUTE FUNCTION audit_capture_change('directory_id');
+CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON staff
+ FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
+
+-- Audit existing base tables without taking ownership of their definitions.
+CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON course
+ FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id');
+CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON course
+ FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
+
+-- Audit existing base tables without taking ownership of their definitions.
+CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON course_staff
+ FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id', 'directory_id');
+CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON course_staff
+ FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
+
+-- Audit existing base tables without taking ownership of their definitions.
+CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON student
+ FOR EACH ROW EXECUTE FUNCTION audit_capture_change('uid');
+CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON student
+ FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();
+
+-- Audit existing base tables without taking ownership of their definitions.
+CREATE TRIGGER audit_change AFTER INSERT OR UPDATE OR DELETE ON enrollment
+ FOR EACH ROW EXECUTE FUNCTION audit_capture_change('course_id', 'uid');
+CREATE TRIGGER audit_no_truncate BEFORE TRUNCATE ON enrollment
+ FOR EACH STATEMENT EXECUTE FUNCTION audit_reject_truncate();

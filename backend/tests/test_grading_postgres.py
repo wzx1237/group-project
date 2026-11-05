@@ -41,14 +41,14 @@ def native(monkeypatch, tmp_path):
     monkeypatch.setattr(config, 'DATA_DIR', tmp_path)
     database = Database.from_pool(pool)
     with database.get_connection() as conn:
-        conn.execute("INSERT INTO staff VALUES ('alice','Alice',NULL),('bob','Bob',NULL),('teacher','Teacher',NULL)")
+        conn.execute("INSERT INTO staff VALUES ('alice','Alice',NULL,'ta'),('bob','Bob',NULL,'ta'),('teacher','Teacher',NULL,'instructor')")
         conn.execute("INSERT INTO course(code,term) VALUES ('CMSC','Fall'),('OTHER','Fall')")
-        conn.execute("INSERT INTO course_staff VALUES (1,'alice','ta'),(1,'bob','ta'),(1,'teacher','instructor')")
+        conn.execute("INSERT INTO course_staff VALUES (1,'alice'),(1,'bob'),(1,'teacher')")
         conn.execute("INSERT INTO exam(course_id,exam_name) VALUES (1,'Exam'),(2,'Other Exam')")
-        conn.execute("INSERT INTO student VALUES (123456789,'Student',NULL),(234567890,'Student Two',NULL)")
+        conn.execute("INSERT INTO student(uid,name) VALUES ('123456789','Student'),('234567890','Student Two')")
         conn.execute("INSERT INTO enrollment VALUES (1,123456789),(1,234567890)")
         conn.execute("INSERT INTO studentpaper VALUES (1,123456789,'paper.pdf',NULL),(1,234567890,'paper.pdf',NULL)")
-        conn.execute("INSERT INTO rubric VALUES (1,'Q1','manual',5),(1,'Q2','manual',5)")
+        conn.execute("INSERT INTO rubric(exam_id,qid,grading_method,total_scores) VALUES (1,'Q1','manual',5),(1,'Q2','manual',5)")
         conn.execute("INSERT INTO mapping VALUES (1,123456789,'Q1','alice','Pending'),(1,234567890,'Q1',NULL,'Pending')")
         conn.execute("INSERT INTO label(exam_id,title,deduction) VALUES (1,'Credit',5),(1,'Deduct',-1),(1,'Other question',2)")
         conn.execute("INSERT INTO rubric_label VALUES (1,'Q1',1),(1,'Q1',2),(1,'Q2',3)")
@@ -85,7 +85,7 @@ def test_grade_rubric_regrade_and_persistence(native):
     start = client.post('/api/exams/1/questions/Q1/start')
     assert start.status_code == 200, start.text
     state = start.json()
-    assert state['UID'] == 123456789
+    assert state['UID'] == '123456789'
     assert client.get(state['pdf_url']).content.startswith(b'%PDF')
     response = save(client, [1,2], snapshot=state)
     assert response.status_code == 201, response.text
@@ -130,7 +130,7 @@ def test_validation_auth_and_no_partial_writes(native):
     app.dependency_overrides[current_user] = lambda: 'bob'
     assert client.get(BASE + '/workspace').status_code == 403
     claimed = client.post('/api/exams/1/questions/Q1/start')
-    assert claimed.status_code == 200 and claimed.json()['UID'] == 234567890
+    assert claimed.status_code == 200 and claimed.json()['UID'] == '234567890'
     app.dependency_overrides.clear()
     assert client.get('/api/courses').status_code == 401
 
@@ -144,19 +144,19 @@ def test_empty_labels_replay_and_pdf_confinement(native):
     assert save(client, [1]).status_code == 409
     assert save(client, [], regrade=True).status_code == 200
     with database.get_connection() as conn:
-        conn.execute("UPDATE studentpaper SET scanned_pdf='/etc/passwd' WHERE exam_id=1 AND uid=123456789")
+        conn.execute("UPDATE studentpaper SET scanned_pdf='/etc/passwd' WHERE exam_id=1 AND uid='123456789'")
     assert client.get(BASE + '/pdf').status_code == 404
 
 
 def test_same_snapshot_concurrent_grades(native):
     _, database, _, _, _ = native
     svc = GradingService(database, 'alice')
-    state = svc.workspace(1,123456789,'Q1')
+    state = svc.workspace(1,'123456789','Q1')
     barrier = threading.Barrier(2)
     def run(_):
         barrier.wait(timeout=5)
         try:
-            svc.save(1,123456789,'Q1',[1],None,state['grade_token'])
+            svc.save(1,'123456789','Q1',[1],None,state['grade_token'])
             return 201
         except HTTPException as error:
             return error.status_code
@@ -169,11 +169,11 @@ def test_same_snapshot_concurrent_grades(native):
 def test_rubric_edit_invalidates_a_waiting_grade(native):
     _, database, dsn, _, _ = native
     svc = GradingService(database, 'alice')
-    state = svc.workspace(1,123456789,'Q1')
+    state = svc.workspace(1,'123456789','Q1')
     with psycopg.connect(dsn, row_factory=dict_row) as blocker:
         blocker.execute("SELECT * FROM rubric WHERE exam_id=1 AND qid='Q1' FOR NO KEY UPDATE")
         with ThreadPoolExecutor(1) as workers:
-            future = workers.submit(svc.save,1,123456789,'Q1',[1],None,state['grade_token'])
+            future = workers.submit(svc.save,1,'123456789','Q1',[1],None,state['grade_token'])
             blocker_pid = blocker.info.backend_pid
             with psycopg.connect(dsn, autocommit=True) as monitor:
                 deadline = time.monotonic() + 4
@@ -191,7 +191,7 @@ def test_rubric_edit_invalidates_a_waiting_grade(native):
             with pytest.raises(HTTPException) as error:
                 future.result(timeout=10)
             assert error.value.status_code == 412
-    assert svc.workspace(1,123456789,'Q1')['assignment']['status'] == 'Regrade'
+    assert svc.workspace(1,'123456789','Q1')['assignment']['status'] == 'Regrade'
 
 
 def test_rollback_includes_grade_and_audit(native, monkeypatch):
@@ -200,9 +200,9 @@ def test_rollback_includes_grade_and_audit(native, monkeypatch):
         raise RuntimeError('simulated failure after decision insert')
     monkeypatch.setattr(Database, 'update_assignment_status', fail)
     svc = GradingService(database, 'alice')
-    state = svc.workspace(1,123456789,'Q1')
+    state = svc.workspace(1,'123456789','Q1')
     with pytest.raises(RuntimeError):
-        svc.save(1,123456789,'Q1',[1],None,state['grade_token'])
+        svc.save(1,'123456789','Q1',[1],None,state['grade_token'])
     with database.get_connection() as conn:
         assert conn.execute('SELECT count(*) AS n FROM decision').fetchone()['n'] == 0
         assert conn.execute('SELECT count(*) AS n FROM decision_label').fetchone()['n'] == 0
@@ -236,11 +236,11 @@ def test_instructor_question_creation_and_release(native):
 def test_rubric_change_waits_for_grade_then_requeues(native):
     _, database, dsn, _, _ = native
     svc = GradingService(database, 'alice')
-    state = svc.workspace(1,123456789,'Q1')
+    state = svc.workspace(1,'123456789','Q1')
     with psycopg.connect(dsn) as blocker, psycopg.connect(dsn, autocommit=True) as monitor:
-        blocker.execute("SELECT * FROM mapping WHERE exam_id=1 AND uid=123456789 AND qid='Q1' FOR UPDATE")
+        blocker.execute("SELECT * FROM mapping WHERE exam_id=1 AND uid='123456789' AND qid='Q1' FOR UPDATE")
         with ThreadPoolExecutor(2) as workers:
-            grade = workers.submit(svc.save,1,123456789,'Q1',[1],None,state['grade_token'])
+            grade = workers.submit(svc.save,1,'123456789','Q1',[1],None,state['grade_token'])
             deadline = time.monotonic() + 4
             while time.monotonic() < deadline:
                 waiting = monitor.execute(
@@ -265,6 +265,67 @@ def test_rubric_change_waits_for_grade_then_requeues(native):
             assert chain, 'Rubric edit must actually wait for the grading transaction'
             assert grade.result(timeout=10)['score'] == 5
             assert edit.result(timeout=10)['affected_mappings'] == 2
-    current = svc.workspace(1,123456789,'Q1')
+    current = svc.workspace(1,'123456789','Q1')
     assert current['assignment']['status'] == 'Regrade'
     assert current['decision']['scores'] == 5
+
+
+def test_frontend_rubric_edit_recalculates_and_keeps_notes_private(native):
+    client, database, _, _, app = native
+    app.dependency_overrides[current_user] = lambda: 'teacher'
+    base='/api/assignments/1/rubric'
+    assert client.get(base).status_code == 200
+    created=client.post(base+'/questions',json={'qid':'Q9','title':'Chain rule','total_score':5})
+    assert created.status_code==201,created.text
+    assert created.json()['title']=='Chain rule'
+    assert client.patch(base+'/questions/Q9',json={'qid':'Q9','title':'Derivative','total_score':6}).status_code==200
+    url='/api/assignments/1/submissions/123456789/questions/Q1/decision'
+    saved=client.put(url,json={'criteria':['1','2'],'comment':'Public','internal_note':'Private'})
+    assert saved.status_code==200,saved.text
+    assert saved.json()['score']==4
+    assert saved.json()['comment']=='Public' and saved.json()['internal_note']=='Private'
+    edited=client.patch(base+'/criteria/2',json={'title':'Deduction','deduction':-2})
+    assert edited.status_code==200,edited.text
+    assert client.get('/api/assignments/1/submissions/123456789/questions/Q1').json()['score']==3
+    assert client.delete(base+'/criteria/1').status_code==204
+    assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==-2
+    assert client.delete(base+'/criteria/2').status_code==204
+    assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==0
+    assert client.delete(base+'/questions/Q9').status_code==204
+    app.dependency_overrides[current_user] = lambda: 'alice'
+    assert client.patch(base+'/criteria/3',json={'title':'Denied','deduction':0}).status_code==403
+
+
+def test_text_uid_base_methods_and_borrowed_pool(native):
+    _,database,_,_,_=native
+    assert database.add_staff('NEWTA','New',role='ta')
+    assert database.add_staff_to_course(1,'newta')
+    assert database.get_staff('newta')['courses'][0]['role']=='ta'
+    assert database.add_student('012345678','Leading zero')
+    assert database.get_student('012345678')['uid']=='012345678'
+    database.close()
+    assert database.get_student('012345678')['uid']=='012345678'
+
+
+def test_label_recalculation_failure_rolls_back_definition(native):
+    client,database,_,_,_=native
+    assert save(client,[1,2]).status_code==201
+    # NUMERIC(5,2) overflow must roll back the label and every derived score.
+    with pytest.raises(psycopg.errors.NumericValueOutOfRange):
+        database.edit_label(2,'Too large',None,999,exam_ID=1)
+    assert database.get_label(2,exam_ID=1)['deduction']==-1
+    assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==4
+
+
+def test_upgrade_of_already_registered_003(native):
+    _,database,dsn,_,_=native
+    with psycopg.connect(dsn) as conn:
+        conn.execute('ALTER TABLE decision RENAME COLUMN internal_note TO internal_node')
+        conn.execute('ALTER TABLE decision DROP COLUMN updated_at')
+        conn.execute('ALTER TABLE rubric ALTER COLUMN region TYPE JSON USING region::json')
+        conn.execute("DELETE FROM schema_migration WHERE name='004_grading_alignment.sql'")
+    assert db.migrate(dsn)==['004_grading_alignment.sql']
+    with database.get_connection() as conn:
+        row=conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='decision'").fetchall()
+        assert {'internal_note','updated_at'} <= {r['column_name'] for r in row}
+    assert db.migrate(dsn)==[]

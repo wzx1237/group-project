@@ -13,14 +13,9 @@ __all__ = ["Student"]
 class Student:
   """Methods provided to Database; this class does not create its own pool."""
 
-  def get_student(self, UID: int | str, *, exam_ID: int | None = None) -> Dict[str, Any] | None:
+  def get_student(self, UID: str, *, exam_ID: int | None = None) -> Dict[str, Any] | None:
     """Return global student data, or student data joined to one exam paper."""
-    if not isinstance(UID, int):
-      try:
-        UID = int(UID)
-      except (ValueError, TypeError):
-        logger.exception("face error when convert %s to int", UID)
-        return None
+    UID = self.normalize_uid(UID)
     try:
       with self.get_worker() as cursor:
         if exam_ID is None:
@@ -49,7 +44,7 @@ class Student:
       logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
       raise
 
-  def add_student(self, UID: int, name: str, email: str | None = None) -> bool:
+  def add_student(self, UID: str, name: str, email: str | None = None) -> bool:
     """Create a global student; return False if the UID already exists."""
     try:
       with self.get_worker() as cursor:
@@ -66,7 +61,7 @@ class Student:
       logger.exception("create student failed", extra={"extra": {"UID": UID}})
       raise
 
-  def add_student_to_course(self, course_ID: int, UID: int) -> bool:
+  def add_student_to_course(self, course_ID: int, UID: str) -> bool:
     """Enroll an existing student; return False for an existing enrollment."""
     try:
       with self.get_worker() as cursor:

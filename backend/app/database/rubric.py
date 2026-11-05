@@ -111,3 +111,23 @@ class Rubric:
     )
     if self.get_one(cursor) is None:
       raise ValueError(f"Rubric {QID} does not exist")
+
+  def add_question(self, QID, title, grading_method, total_scores, region=None, *, exam_ID):
+    """Create a question independently of its reusable label relationships."""
+    from psycopg.types.json import Jsonb
+    with self.get_worker() as cursor:
+      cursor.execute('INSERT INTO rubric(exam_id,qid,title,grading_method,total_scores,region) VALUES(%s,%s,%s,%s,%s,%s)',
+                     (exam_ID, QID, title, grading_method, total_scores, Jsonb(region)))
+
+  def edit_question(self, QID, title, grading_method, total_scores, region=None, *, exam_ID):
+    from psycopg.types.json import Jsonb
+    with self.get_worker() as cursor:
+      cursor.execute('UPDATE rubric SET title=%s,grading_method=%s,total_scores=%s,region=%s WHERE exam_id=%s AND qid=%s',
+                     (title, grading_method, total_scores, Jsonb(region), exam_ID, QID))
+      return cursor.rowcount > 0
+
+  def remove_question(self, QID, *, exam_ID):
+    """Delete the current question; FK cascades are captured by audit triggers."""
+    with self.get_worker() as cursor:
+      cursor.execute('DELETE FROM rubric WHERE exam_id=%s AND qid=%s', (exam_ID,QID))
+      return cursor.rowcount > 0

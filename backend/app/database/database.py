@@ -49,6 +49,7 @@ class Database(
     self._initialize_audit()
     self._active_connection = ContextVar('gradeflow_active_connection', default=None)
     # One shared pool is used by all mixins; retain the uploaded v2 limit of 30.
+    self._owns_pool = True
     self.pool = ConnectionPool(
       conninfo=make_conninfo(
         host=host, port=port, dbname=dbname, user=user, password=password
@@ -58,6 +59,16 @@ class Database(
       open=True,
       kwargs={"row_factory": dict_row}    # intentionally change the return type from Tuple to Dict
     )
+
+  @classmethod
+  def from_pool(cls, pool):
+    """Borrow the application pool; only its lifespan may close it."""
+    instance = cls.__new__(cls)
+    instance._initialize_audit()
+    instance._active_connection = ContextVar('gradeflow_active_connection', default=None)
+    instance.pool = pool
+    instance._owns_pool = False
+    return instance
 
   def get_connection(self) -> ContextManager[psycopg.Connection[Dict[str, Any]]]:
     return self._reusable_connection()
@@ -89,7 +100,8 @@ class Database(
       if self._audit_schema_seen:
         self._flush_audit_safely()
     finally:
-      self.pool.close()
+      if self._owns_pool:
+        self.pool.close()
 
   @contextmanager
   def get_worker(self) -> Iterator[psycopg.Cursor[Dict[str, Any]]]:
@@ -105,3 +117,11 @@ class Database(
   def get_all(self, cursor: psycopg.Cursor[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Fetch the remaining rows from a cursor that has already executed a query."""
     return cursor.fetchall()
+
+  @staticmethod
+  def normalize_uid(uid):
+    """Validate a nine-digit identity without losing leading zeroes."""
+    import re
+    if not isinstance(uid, str) or re.fullmatch(r'[0-9]{9}', uid) is None:
+      raise ValueError('UID must be a nine-digit string')
+    return uid
