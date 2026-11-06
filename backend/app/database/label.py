@@ -66,7 +66,7 @@ class Label:
     Capture affected decisions before a DELETE cascades away their label links.
     """
     with self.get_worker() as cursor:
-      cursor.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam_ID,))
+      cursor.execute('SELECT exam_id FROM assignment WHERE exam_id=%s FOR UPDATE', (exam_ID,))
       cursor.execute('SELECT record_id FROM decision_label WHERE exam_id=%s AND label_id=%s ORDER BY record_id', (exam_ID,label_ID))
       records = [row['record_id'] for row in cursor.fetchall()]
       if values is None:

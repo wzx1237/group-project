@@ -1,34 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { SetupStep } from '@/components/exam-setup/setupStep'
 import { BlankExamUploadStep } from '@/components/exam-setup/blankExamUploadStep'
 import { QuestionAndRegionsStep } from '@/components/exam-setup/questionAndRegionsStep'
 import { InitialRubricSetup } from '@/components/exam-setup/initialRubricSetup'
-import { GraderAssignmentStep } from '@/components/exam-setup/graderAssignmentStep'
 import { useCourse } from '@/context/CourseContext'
 import * as examsSetupService from '@/services/examsSetupService'
 import styles from './examsetup.module.css'
 
-// coordinates the 4-step exam creation wizard from templates to grader assignments
+// coordinates the 3-step exam creation wizard: exam files, questions and regions, then the rubric
 export default function ExamSetupWizardPage() {
   const { courseId } = useParams()
   const router = useRouter()
   const { course, refresh } = useCourse() || {}
 
   const [currentStep, setCurrentStep] = useState(1)
+  const [publishError, setPublishError] = useState('')
+  const [created, setCreated] = useState(null) // the assignment, once creating it has worked
   const [examData, setExamData] = useState({
-    title: 'Quiz 03: Derivatives',
-    totalPoints: 20,
-    dueDate: '2026-09-28',
+    title: '',
+    totalPoints: '',
+    dueDate: '',
     blankPdf: null,
-    answerKeyPdf: null,
     questions: [],
-    rubric: [],
-    gradingMode: 'by_question',
-    assignments: {},
   })
+
+  const saveRubric = useCallback((rubric) => setExamData((prev) => ({ ...prev, rubric })), [])
 
   // saves step 1 file templates and metadata then advances to step 2
   function handleStep1Next(data) {
@@ -42,42 +42,30 @@ export default function ExamSetupWizardPage() {
     setCurrentStep(3)
   }
 
-  // saves step 3 rubric criteria deductions then advances to step 4
-  function handleStep3Next(rubric) {
-    setExamData((prev) => ({ ...prev, rubric }))
-    setCurrentStep(4)
-  }
+  // Creates the exam, saves its blank PDF (which sets up splitting scans), questions, regions and rubric, then opens
+  // its upload page. If a later part fails, the wizard keeps its data so Create exam can be tried again.
+  async function handleCreateExam(rubric) {
+    setPublishError('')
 
-  // submits all finalized exam specifications to backend api and redirects to submissions upload
-  async function handlePublishExam(finalPayload) {
-    const completeExam = {
-      ...examData,
-      ...finalPayload,
+    let exam = created
+    if (!exam) {
+      try {
+        exam = await examsSetupService.createExamDraft(courseId, { title: examData.title, due: examData.dueDate })
+      } catch (err) {
+        setPublishError(`Could not create the exam: ${err.message}`)
+        return
+      }
+      setCreated(exam)
+      await refresh?.()
     }
 
     try {
-      const created = await examsSetupService.createExamDraft(courseId, {
-        title: completeExam.title,
-        total_score: completeExam.totalPoints,
-        due: completeExam.dueDate,
-      })
-
-      const examId = created?.id || 'quiz-03'
-
-      if (completeExam.blankPdf) {
-        await examsSetupService.uploadExamTemplatePdf(examId, completeExam.blankPdf, 'blank_exam')
-      }
-      if (completeExam.answerKeyPdf) {
-        await examsSetupService.uploadExamTemplatePdf(examId, completeExam.answerKeyPdf, 'answer_key')
-      }
-
-      await examsSetupService.saveQuestionDefinitionsAndRegions(examId, completeExam.questions)
-      await examsSetupService.assignGradersToQuestions(examId, completeExam.assignments)
-
-      await refresh?.()
-      router.push(`/courses/${courseId}/exams/${examId}/upload`)
-    } catch {
-      router.push(`/courses/${courseId}/exams/quiz-03/upload`)
+      await examsSetupService.uploadExamTemplatePdf(exam.id, examData.blankPdf, 'blank_exam')
+      await examsSetupService.saveQuestionsAndRubric(exam.id, rubric)
+      router.push(`/courses/${courseId}/exams/${exam.id}/upload`)
+    } catch (err) {
+      const reason = err.message.replace(/\.$/, '')
+      setPublishError(`“${exam.title}” was created, but saving its setup failed: ${reason}. Your setup is still here, so you can try again.`)
     }
   }
 
@@ -89,7 +77,7 @@ export default function ExamSetupWizardPage() {
             {examData.title || 'New Exam Setup'}
           </h1>
           <p className={styles.meta}>
-            {course?.code || 'MATH 101'} · Draft mode
+            {course?.code} · Draft mode
           </p>
         </div>
       </header>
@@ -98,6 +86,18 @@ export default function ExamSetupWizardPage() {
         <SetupStep currentStep={currentStep} onStepClick={(step) => step < currentStep && setCurrentStep(step)} />
       </div>
 
+      {publishError && (
+        <p className={styles.publishError} role="alert">
+          {publishError}
+          {created && (
+            <>
+              {' '}
+              <Link href={`/courses/${courseId}/exams/${created.id}/upload`}>Open {created.title}</Link>
+            </>
+          )}
+        </p>
+      )}
+
       <section className={styles.stepBody}>
         {currentStep === 1 && (
           <BlankExamUploadStep initialData={examData} onNext={handleStep1Next} />
@@ -105,6 +105,7 @@ export default function ExamSetupWizardPage() {
 
         {currentStep === 2 && (
           <QuestionAndRegionsStep
+            blankPdf={examData.blankPdf}
             initialQuestions={examData.questions}
             totalExamPoints={examData.totalPoints}
             onBack={() => setCurrentStep(1)}
@@ -114,17 +115,13 @@ export default function ExamSetupWizardPage() {
 
         {currentStep === 3 && (
           <InitialRubricSetup
-            questions={examData.questions}
+            questions={examData.questions.map((q) => ({
+              ...q,
+              criteria: examData.rubric?.find((r) => r.qid === q.qid)?.criteria,
+            }))}
+            onChange={saveRubric}
             onBack={() => setCurrentStep(2)}
-            onNext={handleStep3Next}
-          />
-        )}
-
-        {currentStep === 4 && (
-          <GraderAssignmentStep
-            questions={examData.questions}
-            onBack={() => setCurrentStep(3)}
-            onPublish={handlePublishExam}
+            onNext={handleCreateExam}
           />
         )}
       </section>

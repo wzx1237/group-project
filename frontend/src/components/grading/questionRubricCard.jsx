@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { formatPoints, gradingProgress, partLabel, questionPoints, scoringOf } from '@/lib/rubric'
@@ -11,9 +10,18 @@ import { icon } from './icon'
 import { QuestionEditorForm } from './questionEditorForm'
 import styles from './rubricPanel.module.css'
 
-export function QuestionRubricCard({ question, label, parts = [], isPart = false, collapsed, onToggle, actions, grading }) {
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(null)
+export function QuestionRubricCard(props) {
+  const { question, label, parts = [], isPart = false, collapsed, onToggle, actions, grading } = props
+  const { editor, onOpenEditor, onCloseEditor } = props
+  const qid = question.qid
+  // Which of this question's editors is open, if any: its question form, one criterion, a new criterion or subquestion.
+  const editingQuestion = editor === `edit:${qid}`
+  const editingCriterion = editor?.startsWith(`criterion:${qid}:`) ? editor.slice(`criterion:${qid}:`.length) : null
+  const editing = editingQuestion || editingCriterion !== null
+  const addingCriterion = editor === `new-criterion:${qid}`
+  const addingPart = editor === `new-part:${qid}`
+  // Leaving a criterion's form goes back to editing its question.
+  const backToQuestion = () => onOpenEditor(`edit:${qid}`, { discard: true })
 
   const isCollapsed = collapsed.has(question.qid)
   const hasParts = parts.length > 0
@@ -21,7 +29,6 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
   const points = questionPoints(question, parts)
   const progress = grading && gradingProgress(hasParts ? parts : [question], grading.decisions)
   const applied = grading?.decisions[question.qid]?.criteria ?? []
-  const closeForm = () => setForm(null)
 
   function handleRemove() {
     const contents = hasParts ? ' and its subquestions' : question.criteria.length ? ' and its criteria' : ''
@@ -33,7 +40,7 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
   }
 
   return (
-    <section className={styles.card} aria-label={name}>
+    <section className={styles.card} aria-label={name} data-editor-owner={qid}>
       <div className={styles.summary}>
         <button
           type="button"
@@ -52,25 +59,25 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
 
       {!isCollapsed && (
         <>
-          {editing ? (
+          {editingQuestion ? (
             <QuestionEditorForm
               heading={`Edit ${label}`}
               initialQuestion={question}
               gradable={!hasParts}
               note={hasParts ? 'Points come from its subquestions' : null}
-              onSave={(body) => actions.updateQuestion(question.qid, body).then((ok) => ok && setEditing(false))}
-              onCancel={() => setEditing(false)}
+              onSave={(body) => actions.updateQuestion(question.qid, body).then((ok) => ok && onCloseEditor())}
+              onCancel={onCloseEditor}
             />
           ) : (
             <div className={styles.actions}>
               {!hasParts && (
-                <Button size="sm" onClick={() => setForm('criterion')}>
+                <Button size="sm" onClick={() => onOpenEditor(`new-criterion:${qid}`)}>
                   <Plus {...icon} />
                   Criterion
                 </Button>
               )}
               {!isPart && (
-                <Button size="sm" onClick={() => setForm('part')}>
+                <Button size="sm" onClick={() => onOpenEditor(`new-part:${qid}`)}>
                   <Plus {...icon} />
                   Subquestion
                 </Button>
@@ -79,25 +86,25 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
                 <Trash2 {...icon} />
                 Remove
               </Button>
-              <Button size="sm" onClick={() => setEditing(true)}>
+              <Button size="sm" onClick={() => onOpenEditor(`edit:${qid}`)}>
                 <Pencil {...icon} />
                 Edit
               </Button>
             </div>
           )}
 
-          {(question.criteria.length > 0 || form === 'criterion') && (
+          {(question.criteria.length > 0 || addingCriterion) && (
             <ul className={styles.criteria}>
               {question.criteria.map((criterion) =>
-                form === criterion.label_id ? (
+                editingCriterion === criterion.label_id ? (
                   <li key={criterion.label_id}>
                     <CriterionEditorForm
                       initialCriterion={criterion}
                       question={question}
                       onSave={(body) =>
-                        actions.updateCriterion(question.qid, criterion.label_id, body).then((ok) => ok && closeForm())
+                        actions.updateCriterion(question.qid, criterion.label_id, body).then((ok) => ok && backToQuestion())
                       }
-                      onCancel={closeForm}
+                      onCancel={backToQuestion}
                     />
                   </li>
                 ) : (
@@ -107,17 +114,17 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
                     editing={editing}
                     applied={applied.includes(criterion.label_id)}
                     onApply={grading && (() => grading.onToggleCriterion(question.qid, criterion.label_id))}
-                    onEdit={() => setForm(criterion.label_id)}
+                    onEdit={() => onOpenEditor(`criterion:${qid}:${criterion.label_id}`)}
                     onRemove={() => handleRemoveCriterion(criterion)}
                   />
                 ),
               )}
-              {form === 'criterion' && (
+              {addingCriterion && (
                 <li>
                   <CriterionEditorForm
                     question={question}
-                    onSave={(body) => actions.addCriterion(question.qid, body).then((ok) => ok && closeForm())}
-                    onCancel={closeForm}
+                    onSave={(body) => actions.addCriterion(question.qid, body).then((ok) => ok && onCloseEditor())}
+                    onCancel={onCloseEditor}
                   />
                 </li>
               )}
@@ -132,7 +139,7 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
             />
           )}
 
-          {(hasParts || form === 'part') && (
+          {(hasParts || addingPart) && (
             <div className={styles.parts}>
               {parts.map((part, i) => (
                 <QuestionRubricCard
@@ -144,15 +151,18 @@ export function QuestionRubricCard({ question, label, parts = [], isPart = false
                   onToggle={onToggle}
                   actions={actions}
                   grading={grading}
+                  editor={editor}
+                  onOpenEditor={onOpenEditor}
+                  onCloseEditor={onCloseEditor}
                 />
               ))}
-              {form === 'part' && (
+              {addingPart && (
                 <QuestionEditorForm
                   heading="New subquestion"
                   initialScoring={scoringOf(question)}
                   note={!hasParts && question.criteria.length ? `${label}'s criteria move into this subquestion` : null}
-                  onSave={(body) => actions.addQuestion({ ...body, parent_qid: question.qid }).then((ok) => ok && closeForm())}
-                  onCancel={closeForm}
+                  onSave={(body) => actions.addQuestion({ ...body, parent_qid: question.qid }).then((ok) => ok && onCloseEditor())}
+                  onCancel={onCloseEditor}
                 />
               )}
             </div>

@@ -17,7 +17,7 @@ shutil.copytree(
 )
 os.environ["GRADEFLOW_DATA_DIR"] = _data_dir.name
 
-from app import cas, db, rosters
+from app import assignments, cas, config, db, rosters
 from app.main import create_app
 from app.routing import auth
 from app.settings import Settings
@@ -27,6 +27,17 @@ from app.settings import Settings
 def no_database(monkeypatch):
     monkeypatch.setattr(db, "open_database", lambda url: contextlib.nullcontext())
     monkeypatch.setattr(rosters, "students", lambda pool=None: rosters.students_csv())
+    # Stand in for the database's course and assignments with what config.json describes.
+    cfg = config.load()
+    course = {
+        "course_id": 1, **cfg["course"], "title": None, "role": "instructor",
+        "assignments": [
+            {"id": a["id"], "exam_id": number, "course_id": 1, "title": a["title"], "kind": a["kind"],
+             "short": a["short"], "due": a["due"]}
+            for number, a in enumerate(cfg["assignments"], start=1)
+        ],
+    }
+    monkeypatch.setattr(assignments, "user_courses", lambda pool, directory_id: [course])
 
 
 @pytest.fixture

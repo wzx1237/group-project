@@ -5,6 +5,8 @@ import psycopg
 import logging
 from typing import List, Dict, Any
 
+from app.slugs import unique_slug
+
 # create a logger to store our log:
 logger = logging.getLogger(__name__)
 
@@ -14,16 +16,19 @@ class Exam:
   """Methods provided to Database; this class does not create its own pool."""
 
   def add_exam(self, exam_name: str, course_ID: int) -> int:
-    """Create an exam in an existing course and return its generated ID."""
+    """Create an exam in an existing course and return its generated ID. Its slug is made from the name."""
     try:
       with self.get_worker() as cursor:
+        # Slugs are unique across all courses (they name upload folders and templates).
+        cursor.execute("SELECT slug FROM assignment")
+        slug = unique_slug(exam_name, {row["slug"] for row in cursor.fetchall()})
         cursor.execute(
           """
-          INSERT INTO Exam (course_id, exam_name)
-          VALUES (%s, %s)
+          INSERT INTO assignment (course_id, exam_name, slug)
+          VALUES (%s, %s, %s)
           RETURNING exam_id
           """,
-          (course_ID, exam_name)
+          (course_ID, exam_name, slug)
         )
         return self.get_one(cursor)["exam_id"]
     except psycopg.Error as error:
@@ -40,7 +45,7 @@ class Exam:
         cursor.execute(
           """
           SELECT *
-          FROM Exam
+          FROM assignment
           WHERE exam_id = %s
           """, (exam_ID, )
         )
@@ -54,7 +59,7 @@ class Exam:
     try:
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT exam_id, exam_name FROM Exam WHERE course_id = %s ORDER BY exam_id""",
+          """SELECT exam_id, exam_name FROM assignment WHERE course_id = %s ORDER BY exam_id""",
           (course_ID, )
         )
         return self.get_all(cursor)

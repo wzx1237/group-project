@@ -1,47 +1,39 @@
-'use client'
-
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { formatDateTime } from './format'
+import styles from './submissions.module.css'
 
-// renders real-time exam batch upload counts percentage and last activity timestamp
-export function UploadStatusCard({
-  uploadedCount = 35,
-  totalCount = 36,
-  lastUploadTime = 'Sep 29, 2026 at 9:16 AM',
-}) {
-  const percent = totalCount > 0 ? Math.round((uploadedCount / totalCount) * 100) : 0
+export function UploadStatusCard({ uploads, students }) {
+  const withExam = students.filter((s) => s.submission).length
+  const split = uploads.filter((u) => u.status === 'processed')
+  const exams = split.reduce((n, u) => n + u.submissions.length, 0)
+  const review = split
+    .filter((u) => u.matching === 'done')
+    .reduce((n, u) => n + u.submissions.filter((s) => s.match.state === 'needs_review').length, 0)
+  const last = uploads.map((u) => u.uploaded_at).sort().at(-1)
 
   return (
-    <div
-      style={{
-        background: '#ffffff',
-        border: '1px solid #dfe5e5',
-        borderRadius: '12px',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-      }}
-    >
-      <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#202c30', margin: 0 }}>
+    <section className={styles.card} aria-labelledby="status-heading">
+      <h2 id="status-heading" className={styles.cardTitle}>
         Upload status
-      </h3>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: '#202c30' }}>
-          {uploadedCount} of {totalCount} exams uploaded
-        </span>
-        <span style={{ fontSize: '13px', fontWeight: 600, color: '#16756b' }}>
-          {percent}%
-        </span>
-      </div>
-
-      <ProgressBar value={percent} label="" />
-
-      {lastUploadTime && (
-        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-          Last upload {lastUploadTime}
+      </h2>
+      <p className={styles.statusLine}>
+        <strong>
+          {withExam} of {students.length}
+        </strong>{' '}
+        {students.length === 1 ? 'student has' : 'students have'} an exam
+      </p>
+      <ProgressBar value={withExam} total={students.length} />
+      <dl className={styles.counts}>
+        <div>
+          <dt>Exams found</dt>
+          <dd>{exams}</dd>
         </div>
-      )}
-    </div>
+        <div>
+          <dt>Need review</dt>
+          <dd className={review ? styles.warn : undefined}>{review}</dd>
+        </div>
+      </dl>
+      <p className={styles.muted}>{last ? `Last upload ${formatDateTime(last)}` : 'Nothing uploaded yet'}</p>
+    </section>
   )
 }

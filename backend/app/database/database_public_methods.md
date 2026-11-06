@@ -204,7 +204,7 @@ Named shapes below are dictionary descriptions, not additional Python classes.
 - **Module:** `database.exam`
 - **Input:** `exam_name: str, course_ID: int`
 - **Output:** int: generated exam_id.
-- **Functionality:** Create a named exam belonging to an existing course.
+- **Functionality:** Create a named exam belonging to an existing course. Its slug is made from the name (starts with a letter, unique within the course).
 
 ### `get_exam`
 

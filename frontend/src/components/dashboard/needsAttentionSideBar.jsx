@@ -7,7 +7,6 @@ export function NeedsAttentionSidebar({
   bottleneckQuestions = [],
   missingExams = [],
   examTitle = 'Quiz 03',
-  onReassignGraders,
   onUploadMissingExam,
 }) {
   const hasBottlenecks = bottleneckQuestions && bottleneckQuestions.length > 0
@@ -62,27 +61,8 @@ export function NeedsAttentionSidebar({
                 {q.qid} · {q.title || 'Question'} is behind
               </div>
               <div style={{ fontSize: '12px', color: '#b45309', marginTop: '2px' }}>
-                {q.gradedCount ?? 22} of {q.totalCount ?? 36} graded · {q.graderCount ?? 1} grader assigned
+                {q.gradedCount ?? 22} of {q.totalCount ?? 36} graded
               </div>
-              <button
-                type="button"
-                onClick={() => onReassignGraders?.(q.qid)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  marginTop: '6px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#16756b',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                Reassign graders →
-              </button>
             </div>
           </div>
         ))}

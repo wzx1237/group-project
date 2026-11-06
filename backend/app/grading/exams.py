@@ -1,4 +1,4 @@
-"""Exams and scans still live in the upload store (data/db.json); grading mirrors them into Postgres."""
+"""Assignments live in Postgres; their uploaded scans still live in the upload store (data/db.json) and are mirrored in as papers."""
 from fastapi import HTTPException
 
 from app import status, store
@@ -13,28 +13,20 @@ def _scans(assignment):
 
 
 def resolve_exam(svc, assignment_id: str) -> int:
-    """The Postgres exam for an upload-store ID like quiz-1, created along with its scanned papers when needed."""
+    """The Postgres assignment for a slug like quiz-1, with its scanned papers brought in from the upload store."""
     if assignment_id.isdigit():
         return int(assignment_id)
-    data = store.load()
-    assignment = next((a for a in data['assignments'] if a['id'] == assignment_id), None)
-    if assignment is None:
-        raise HTTPException(404, 'Assignment not found')
-    scans = _scans(assignment)
+    stored = next((a for a in store.load()['assignments'] if a['id'] == assignment_id),
+                  {'id': assignment_id, 'uploads': [], 'statuses': {}})
+    scans = _scans(stored)
     with svc.db.audit_context(actor_ID=svc.actor), svc.db.transaction():
         with svc.db.get_connection() as conn:
-            course = conn.execute('''SELECT c.course_id FROM course c JOIN course_staff cs USING(course_id)
-                WHERE c.code=%s AND c.term=%s AND cs.directory_id=%s''',
-                                  (data['course']['code'], data['course']['term'], svc.actor)).fetchone()
-            if course is None:
-                raise HTTPException(403, 'Not a member of this exam course')
-            course = course['course_id']
-            conn.execute('''INSERT INTO exam(course_id,exam_name,due,slug) VALUES(%s,%s,%s,%s)
-                ON CONFLICT (course_id,slug) DO UPDATE SET exam_name=EXCLUDED.exam_name,due=EXCLUDED.due
-                WHERE (exam.exam_name,exam.due) IS DISTINCT FROM (EXCLUDED.exam_name,EXCLUDED.due)''',
-                         (course, assignment['title'], assignment.get('due'), assignment_id))
-            exam = conn.execute('SELECT exam_id FROM exam WHERE course_id=%s AND slug=%s FOR UPDATE',
-                                (course, assignment_id)).fetchone()['exam_id']
+            found = conn.execute('''SELECT a.exam_id, a.course_id FROM assignment a JOIN course_staff cs USING(course_id)
+                WHERE a.slug=%s AND cs.directory_id=%s ORDER BY a.course_id LIMIT 1 FOR UPDATE OF a''',
+                                 (assignment_id, svc.actor)).fetchone()
+            if found is None:
+                raise HTTPException(404, 'Assignment not found')
+            exam, course = found['exam_id'], found['course_id']
             # Unassigning a scan keeps its paper, so grades already saved for it stay.
             conn.execute('''INSERT INTO studentpaper(exam_id,uid,scanned_pdf)
                 SELECT %s,s.uid,s.path FROM unnest(%s::text[],%s::text[]) AS s(uid,path)
@@ -44,6 +36,6 @@ def resolve_exam(svc, assignment_id: str) -> int:
                          (exam, list(scans), list(scans.values()), course))
             conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)
                 SELECT p.exam_id,p.uid,r.qid,'Pending' FROM studentpaper p JOIN rubric r USING(exam_id)
-                JOIN exam e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
+                JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
                 WHERE p.exam_id=%s ON CONFLICT DO NOTHING''', (exam,))
     return exam

@@ -23,7 +23,7 @@ class StudentPaper:
           """
           SELECT en.uid
           FROM enrollment AS en
-          JOIN Exam AS e ON e.course_id = en.course_id
+          JOIN assignment AS e ON e.course_id = en.course_id
           WHERE e.exam_ID = %s
             AND en.uid = %s
           FOR SHARE OF en, e

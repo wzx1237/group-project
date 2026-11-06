@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { FileUp, Plus, Search, UserCheck, UserX } from 'lucide-react'
+import { FileUp, Plus, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useCourse } from '@/context/CourseContext'
 import * as courseRosterService from '@/services/courseRosterService'
 import styles from './roster.module.css'
 
-// course student roster page supporting csv uploads and dropping students
+// course student roster page supporting csv uploads and roster viewing
 export default function CourseRosterPage() {
   const { courseId } = useParams()
   const { course } = useCourse() || {}
@@ -24,40 +24,34 @@ export default function CourseRosterPage() {
     setLoading(true)
     try {
       const data = await courseRosterService.fetchCourseRoster(courseId)
-      if (Array.isArray(data) && data.length > 0) {
-        setStudents(data)
-      } else {
-        setStudents([
-          { uid: '119482910', name: 'Alex Chen', email: 'achen@terpmail.umd.edu', section: '0101', status: 'active' },
-          { uid: '118392019', name: 'Jordan Lee', email: 'jlee@terpmail.umd.edu', section: '0102', status: 'active' },
-          { uid: '117283910', name: 'Maya Lin', email: 'mlin@terpmail.umd.edu', section: '0101', status: 'dropped' },
-        ])
-      }
+      setStudents(Array.isArray(data) ? data : [])
     } catch {
-      setStudents([
-        { uid: '119482910', name: 'Alex Chen', email: 'achen@terpmail.umd.edu', section: '0101', status: 'active' },
-        { uid: '118392019', name: 'Jordan Lee', email: 'jlee@terpmail.umd.edu', section: '0102', status: 'active' },
-        { uid: '117283910', name: 'Maya Lin', email: 'mlin@terpmail.umd.edu', section: '0101', status: 'dropped' },
-      ])
+      setStudents([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadRoster()
+    let ignore = false
+    courseRosterService
+      .fetchCourseRoster(courseId)
+      .then((data) => {
+        if (!ignore) {
+          setStudents(Array.isArray(data) ? data : [])
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setStudents([])
+          setLoading(false)
+        }
+      })
+    return () => {
+      ignore = true
+    }
   }, [courseId])
-
-  // toggles a student enrollment status between active and dropped
-  async function handleToggleStatus(uid, currentStatus) {
-    const nextStatus = currentStatus === 'dropped' ? 'active' : 'dropped'
-    try {
-      await courseRosterService.updateStudentEnrollmentStatus(courseId, uid, nextStatus)
-    } catch {}
-    setStudents((prev) =>
-      prev.map((s) => (s.uid === uid ? { ...s, status: nextStatus } : s))
-    )
-  }
 
   // uploads a csv file to replace or append to the current roster
   async function handleCsvUpload(event) {
@@ -76,8 +70,8 @@ export default function CourseRosterPage() {
     event.preventDefault()
     if (!newStudent.uid || !newStudent.name) return
     try {
-      await courseRosterService.upsertStudentRecord(courseId, { ...newStudent, status: 'active' })
-      setStudents((prev) => [...prev, { ...newStudent, status: 'active' }])
+      await courseRosterService.upsertStudentRecord(courseId, { uid: newStudent.uid, name: newStudent.name, email: newStudent.email })
+      await loadRoster()
       setNewStudent({ uid: '', name: '', email: '', section: '0101' })
       setShowAddModal(false)
     } catch (err) {
@@ -87,7 +81,7 @@ export default function CourseRosterPage() {
 
   const filtered = students.filter((s) => {
     const q = searchQuery.toLowerCase()
-    return s.name.toLowerCase().includes(q) || s.uid.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    return s.name.toLowerCase().includes(q) || s.uid.toLowerCase().includes(q) || (s.email ?? '').toLowerCase().includes(q)
   })
 
   return (
@@ -96,7 +90,7 @@ export default function CourseRosterPage() {
         <div>
           <h1 className={styles.title}>Course Student Roster</h1>
           <p className={styles.subtitle}>
-            {course?.code || 'MATH 101'} · {students.filter((s) => s.status !== 'dropped').length} active students enrolled
+            {course?.code || 'CMSC250'} · {students.filter((s) => s.status !== 'dropped').length} active students enrolled
           </p>
         </div>
         <div className={styles.actions}>
@@ -127,10 +121,6 @@ export default function CourseRosterPage() {
         </div>
       </header>
 
-      <div className={styles.notice}>
-        <strong>FERPA & Roster Rule:</strong> Students marked as dropped are automatically excluded from missing-exam alerts, active grading queues, and class statistics so a dropped student is never penalized or treated as an enrolled student who missed an exam.
-      </div>
-
       <div className={styles.toolbar}>
         <div style={{ position: 'relative' }}>
           <Search size={15} color="#9ca3af" style={{ position: 'absolute', left: '10px', top: '10px' }} />
@@ -153,13 +143,12 @@ export default function CourseRosterPage() {
               <th className={styles.th}>Email</th>
               <th className={styles.th}>Section</th>
               <th className={styles.th}>Enrollment Status</th>
-              <th className={styles.th}>Action</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className={styles.empty}>
+                <td colSpan={5} className={styles.empty}>
                   {loading ? 'Loading roster…' : 'No students found.'}
                 </td>
               </tr>
@@ -182,33 +171,6 @@ export default function CourseRosterPage() {
                     <Badge tone={s.status === 'dropped' ? 'danger' : 'soft'}>
                       {s.status === 'dropped' ? 'Dropped' : 'Active'}
                     </Badge>
-                  </td>
-                  <td className={styles.td}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(s.uid, s.status)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: s.status === 'dropped' ? '#16756b' : '#dc2626',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {s.status === 'dropped' ? (
-                        <>
-                          <UserCheck size={14} /> Reactivate
-                        </>
-                      ) : (
-                        <>
-                          <UserX size={14} /> Mark dropped
-                        </>
-                      )}
-                    </button>
                   </td>
                 </tr>
               ))
@@ -266,22 +228,12 @@ export default function CourseRosterPage() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>University Email</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>University Email (optional)</label>
                 <input
-                  required
                   type="email"
                   placeholder="e.g. achen@terpmail.umd.edu"
                   value={newStudent.email}
                   onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #dfe5e5' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Section</label>
-                <input
-                  placeholder="e.g. 0101"
-                  value={newStudent.section}
-                  onChange={(e) => setNewStudent({ ...newStudent, section: e.target.value })}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #dfe5e5' }}
                 />
               </div>

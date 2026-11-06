@@ -24,6 +24,12 @@ next-env.d.ts
 /data/uploads/
 /data/submissions/
 /backend/logs/
+# Exam setup saves each exam's blank PDF, cover template and answer key here; quiz-1's are hand-made and kept
+/data/templates/*
+!/data/templates/quiz-1.json
+!/data/templates/quiz-1.pdf
+
+docker-compose.override.yml
 
 # OS
 .DS_Store

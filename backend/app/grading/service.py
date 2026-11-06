@@ -44,10 +44,10 @@ class GradingService:
                 conn.execute("SET LOCAL lock_timeout = '5s'")
                 conn.execute("SET LOCAL statement_timeout = '15s'")
                 # One short database transaction per request; never hold a lock while a user edits.
-                conn.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam,))
+                conn.execute('SELECT exam_id FROM assignment WHERE exam_id=%s FOR UPDATE', (exam,))
                 member = conn.execute('''SELECT s.role FROM course_staff cs
                     JOIN staff s USING(directory_id)
-                    JOIN exam e USING(course_id)
+                    JOIN assignment e USING(course_id)
                     WHERE e.exam_id=%s AND cs.directory_id=%s FOR SHARE OF cs,e,s''',
                                       (exam, self.actor)).fetchone()
                 if member is None:
@@ -68,7 +68,7 @@ class GradingService:
 
     def _workspace(self, conn, exam, uid, qid, role, *, writing=False):
         # Recheck enrollment; a retained paper alone does not grant access.
-        enrolled = conn.execute('''SELECT en.uid FROM enrollment en JOIN exam e USING(course_id)
+        enrolled = conn.execute('''SELECT en.uid FROM enrollment en JOIN assignment e USING(course_id)
             WHERE e.exam_id=%s AND en.uid=%s FOR SHARE OF en''', (exam, uid)).fetchone()
         if not enrolled:
             raise HTTPException(404, 'Student is not enrolled in this course')
@@ -141,7 +141,7 @@ class GradingService:
             # enrolled answers, without inventing a student or a decision.
             conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)
                 SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
-                JOIN exam e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
+                JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
                 WHERE p.exam_id=%s ON CONFLICT DO NOTHING''', (qid, exam))
             row = conn.execute('''SELECT uid FROM mapping
                 WHERE exam_id=%s AND qid=%s AND (directory_id=%s OR directory_id IS NULL)

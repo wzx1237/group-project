@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.assignments import courses_for
 from app.grading.service import GradingService
 from app.routing.auth import current_user
 
@@ -33,8 +34,7 @@ def check_actor(svc, body):
 @router.get('/courses')
 def courses(svc: Service):
     with svc.db.audit_context(actor_ID=svc.actor), svc.db.get_connection() as conn:
-        return conn.execute('''SELECT c.*,s.role FROM course c JOIN course_staff cs USING(course_id) JOIN staff s USING(directory_id)
-            WHERE cs.directory_id=%s ORDER BY c.course_id''', (svc.actor,)).fetchall()
+        return courses_for(conn, svc.actor)
 
 
 @router.get('/courses/{course_ID}/questions')
@@ -54,7 +54,7 @@ def course_questions(course_ID: int, svc: Service):
              (SELECT 1 FROM mapping other WHERE other.exam_id=e.exam_id AND other.uid=p.uid AND other.qid=r.qid
               AND (other.directory_id IS NOT NULL AND other.directory_id<>%s OR lower(other.status)='finished')))
              AS available
-            FROM exam e JOIN rubric r USING(exam_id) LEFT JOIN mapping m USING(exam_id,qid)
+            FROM assignment e JOIN rubric r USING(exam_id) LEFT JOIN mapping m USING(exam_id,qid)
             WHERE e.course_id=%s GROUP BY e.exam_id,r.exam_id,r.qid ORDER BY e.exam_id,r.qid''',
                             (svc.actor, svc.actor, svc.actor, svc.actor, course_ID)).fetchall()
 

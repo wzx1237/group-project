@@ -2,6 +2,10 @@ import { request } from '@/services/apiClient'
 
 export const getCourse = () => request('/course')
 
+export const getCourses = () => request('/courses')
+
+export const createCourse = (body) => request('/courses', { method: 'POST', body: JSON.stringify(body) })
+
 export const getAssignment = (assignmentId) => request(`/assignments/${assignmentId}`)
 
 export function uploadPdf(assignmentId, file) {

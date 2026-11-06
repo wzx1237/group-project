@@ -5,15 +5,13 @@ import { useParams } from 'next/navigation'
 import { Info } from 'lucide-react'
 import { ScoreDistributionChart } from '@/components/analytics/scoreDistributionChart'
 import { SummaryStatCards } from '@/components/analytics/summaryStatCards'
-import { useCourse } from '@/context/CourseContext'
+import { ExamHeader } from '@/components/exam/examHeader'
 import { formatPoints, plural } from '@/lib/rubric'
 import { fetchExamAnalytics } from '@/services/analyticsService'
 import styles from './analytics.module.css'
 
 export default function ExamAnalyticsPage() {
   const { examId } = useParams()
-  const { assignments } = useCourse()
-  const assignment = assignments.find((a) => a.id === examId)
   const [analytics, setAnalytics] = useState(null)
   const [error, setError] = useState('')
 
@@ -23,19 +21,14 @@ export default function ExamAnalyticsPage() {
       .catch((err) => setError(err.message))
   }, [examId])
 
-  if (!assignment) return <p className="status error">Exam not found.</p>
-
   return (
     <main className={styles.page}>
-      <header className={styles.heading}>
-        <h1 className={styles.title}>{assignment.title}</h1>
-        {analytics && (
-          <p className={styles.meta}>
-            {plural(analytics.submissionCount, 'submission')} · {plural(analytics.questionCount, 'question')} ·{' '}
-            {formatPoints(analytics.totalPoints)}
-          </p>
-        )}
-      </header>
+      <ExamHeader
+        meta={
+          analytics &&
+          `${plural(analytics.submissionCount, 'submission')} · ${plural(analytics.questionCount, 'question')} · ${formatPoints(analytics.totalPoints)}`
+        }
+      />
 
       {error && (
         <p className={styles.error} role="alert">

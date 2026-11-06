@@ -44,7 +44,7 @@ def native(monkeypatch, tmp_path):
         conn.execute("INSERT INTO staff VALUES ('alice','Alice',NULL,'ta'),('bob','Bob',NULL,'ta'),('teacher','Teacher',NULL,'instructor')")
         conn.execute("INSERT INTO course(code,term) VALUES ('CMSC','Fall'),('OTHER','Fall')")
         conn.execute("INSERT INTO course_staff VALUES (1,'alice'),(1,'bob'),(1,'teacher')")
-        conn.execute("INSERT INTO exam(course_id,exam_name) VALUES (1,'Exam'),(2,'Other Exam')")
+        conn.execute("INSERT INTO assignment(course_id,exam_name,slug) VALUES (1,'Exam','exam-1'),(2,'Other Exam','other-exam')")
         conn.execute("INSERT INTO student(uid,name) VALUES ('123456789','Student'),('234567890','Student Two')")
         conn.execute("INSERT INTO enrollment VALUES (1,123456789),(1,234567890)")
         conn.execute("INSERT INTO studentpaper VALUES (1,123456789,'paper.pdf',NULL),(1,234567890,'paper.pdf',NULL)")

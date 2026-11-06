@@ -1,0 +1,466 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+}
+
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+}
+
+.cardMeta,
+.muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.empty {
+  margin: 0;
+  padding: 16px 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.warn {
+  color: var(--warning);
+}
+
+/* Drop zone */
+
+.dropZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  text-align: center;
+}
+
+.dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.disabled {
+  opacity: 0.55;
+}
+
+.dropIcon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dropTitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.dropHint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.uploadBar {
+  width: min(360px, 100%);
+  margin-top: 8px;
+}
+
+/* Uploaded files */
+
+.files {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.fileRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 12px;
+}
+
+.fileRow + .fileRow {
+  border-top: 1px solid var(--border);
+}
+
+.fileIcon {
+  flex: none;
+  color: var(--accent);
+}
+
+.fileText {
+  flex: 1;
+  min-width: 160px;
+}
+
+.fileName {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.fileMeta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.fileError {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.fileActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.iconButton:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Matching */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  margin-bottom: -1px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab[aria-pressed='true'] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tabCount {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  font-size: 11px;
+  color: var(--fg-secondary);
+}
+
+.examList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.examRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px) auto;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 0;
+}
+
+.examRow + .examRow {
+  border-top: 1px solid var(--border);
+}
+
+.examMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.uidImage {
+  flex: none;
+  width: 120px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  object-fit: contain;
+}
+
+.examTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.examMeta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.matched {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.matched svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.matched .muted {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.examActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Assigning an exam by hand */
+
+.assignPanel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+}
+
+.cover {
+  margin: 0;
+}
+
+.cover img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+}
+
+.cover figcaption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.search {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.pickList {
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.pickList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.pickList li + li {
+  border-top: 1px solid var(--border);
+}
+
+.pickName {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pickName .muted {
+  font-size: 11px;
+}
+
+/* Status cards */
+
+.statusLine {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-secondary);
+}
+
+.statusLine strong {
+  color: var(--fg);
+}
+
+.counts {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+}
+
+.counts dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.counts dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.missingList {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.missingList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.missingList li + li {
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .examRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .examActions {
+    justify-content: flex-start;
+  }
+
+  .assignPanel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

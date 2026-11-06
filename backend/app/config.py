@@ -28,6 +28,17 @@ DEFAULTS = {
     "uid_min_confidence": 0.60,
     "uid_min_margin": 0.20,
     "suggestion_min_digits": 6,
+    # Where the course's cover sheet prints its heading and ID labels (anchors), where students write their UID,
+    # and the ID panel shown when assigning by hand. Fractions of the first page: [x0, y0, x1, y1].
+    # A blank exam uploaded in exam setup gets a cover template with these boxes on its own first page.
+    "cover_layout": {
+        "anchors": [
+            {"name": "heading", "rect": [0.39, 0.05, 0.61, 0.073]},
+            {"name": "identification_labels", "rect": [0.084, 0.106, 0.208, 0.193]},
+        ],
+        "uid_region": [0.215, 0.103, 0.445, 0.137],
+        "id_panel": [0.075, 0.095, 0.93, 0.203],
+    },
 }
 
 ASSIGNMENT_FIELDS = ("id", "kind", "title", "short", "due")

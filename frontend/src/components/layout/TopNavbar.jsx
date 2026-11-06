@@ -1,23 +1,17 @@
-import Image from 'next/image'
+'use client'
+
 import Link from 'next/link'
+import { GraduationCap } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import styles from './TopNavbar.module.css'
 
-/**
- * Renders the top navigation bar with GradeFlow branding, breadcrumb trail, save status, and user avatar.
- * @param {Object} props
- * @param {Array<{ label: string, href?: string }>} props.breadcrumbs - Navigation trail (e.g., MATH 101 > Quiz 03)
- * @param {'saved' | 'saving' | 'unsaved' | 'error'} [props.saveStatus] - Real-time autosave indicator state
- * @param {() => void} [props.onOpenChangeLog] - Opens the audit trail drawer when in the workspace
- * @param {{ label: string, href: string }} [props.backAction] - Back button configuration (e.g., "Back to submissions")
- * @param {{ name: string, initials: string, role: string }} props.currentUser - Logged-in staff profile
- */
+// renders the top navigation bar with default brand icon, breadcrumb trail, and user account menu
 export function TopNavbar({ breadcrumbs = [], saveStatus, onOpenChangeLog, backAction, currentUser }) {
   return (
     <nav className={styles.bar}>
       <div className={styles.trail}>
         <Link href="/courses" className={styles.mark} aria-label="GradeFlow home">
-          <Image src="/icons/notebook-pen.svg" width={16} height={16} alt="" />
+          <GraduationCap size={16} color="white" aria-hidden="true" />
         </Link>
         <ol className={styles.crumbs}>
           {breadcrumbs.map((crumb) => (

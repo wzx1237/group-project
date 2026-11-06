@@ -1,25 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Document, Page, pdfjs } from 'react-pdf'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { usePdfRegionDrawer } from '@/hooks/usePdfRegionDrawer'
 
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+
 // renders step 2 of the setup wizard for defining questions and drawing answer regions on blank pdf scans
-export function QuestionAndRegionsStep({ initialQuestions = [], totalExamPoints = 20, onBack, onNext }) {
+export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalExamPoints = 20, onBack, onNext }) {
   const [questions, setQuestions] = useState(
-    initialQuestions.length > 0
-      ? initialQuestions
-      : [
-          { qid: 'Q1', title: 'Power rule', total_score: 5, region: { page: 1, x: 0.1, y: 0.2, width: 0.8, height: 0.15 } },
-          { qid: 'Q2', title: 'Chain rule', total_score: 5, region: { page: 1, x: 0.1, y: 0.4, width: 0.8, height: 0.18 } },
-          { qid: 'Q3', title: 'Slope at a point', total_score: 5, region: { page: 1, x: 0.1, y: 0.62, width: 0.8, height: 0.15 } },
-          { qid: 'Q4', title: 'Tangent line', total_score: 5, region: null },
-        ]
+    initialQuestions.length > 0 ? initialQuestions : [{ qid: 'Q1', title: '', total_score: 5, region: null }]
   )
-  const [activeQid, setActiveQid] = useState('Q4')
+  const [activeQid, setActiveQid] = useState(initialQuestions[0]?.qid ?? 'Q1')
   const [currentPage, setCurrentPage] = useState(1)
+  const [numPages, setNumPages] = useState(0)
+  const [pageWidth, setPageWidth] = useState(0)
+  const viewportRef = useRef(null)
   const { draftRect, handlePointerDown, handlePointerMove, handlePointerUp } = usePdfRegionDrawer()
+
+  // sizes the rendered page to the canvas width so regions are stored relative to the page itself
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setPageWidth(Math.floor(entry.contentRect.width)))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [blankPdf])
 
   // appends a new question to the exam setup list
   function handleAddQuestion() {
@@ -71,116 +79,138 @@ export function QuestionAndRegionsStep({ initialQuestions = [], totalExamPoints 
             flexDirection: 'column',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
-              quiz03_blank.pdf · Page {currentPage} of 2
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+              {blankPdf ? `${blankPdf.name} · Page ${currentPage} of ${numPages || '…'}` : 'No exam PDF uploaded'}
             </span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '4px',
-                  border: '1px solid #dfe5e5',
-                  background: currentPage === 1 ? '#16756b' : '#ffffff',
-                  color: currentPage === 1 ? '#ffffff' : '#374151',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                }}
-              >
-                Page 1
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(2)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '4px',
-                  border: '1px solid #dfe5e5',
-                  background: currentPage === 2 ? '#16756b' : '#ffffff',
-                  color: currentPage === 2 ? '#ffffff' : '#374151',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                }}
-              >
-                Page 2
-              </button>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
+              {Array.from({ length: numPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  style={{
+                    flexShrink: 0,
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid #dfe5e5',
+                    background: currentPage === page ? '#16756b' : '#ffffff',
+                    color: currentPage === page ? '#ffffff' : '#374151',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Page {page}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={onCanvasPointerUp}
-            style={{
-              flex: 1,
-              background: '#ffffff',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              position: 'relative',
-              overflow: 'hidden',
-              cursor: 'crosshair',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-            }}
-          >
-            {questions.map((q) => {
-              if (!q.region || q.region.page !== currentPage) return null
-              const isSelected = q.qid === activeQid
-              return (
-                <div
-                  key={q.qid}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setActiveQid(q.qid)
-                  }}
-                  style={{
-                    position: 'absolute',
-                    left: `${q.region.x * 100}%`,
-                    top: `${q.region.y * 100}%`,
-                    width: `${q.region.width * 100}%`,
-                    height: `${q.region.height * 100}%`,
-                    border: `2px solid ${isSelected ? '#16756b' : '#0d9488'}`,
-                    backgroundColor: isSelected ? 'rgba(22, 117, 107, 0.12)' : 'rgba(13, 148, 136, 0.06)',
-                    borderRadius: '4px',
-                    pointerEvents: 'auto',
-                  }}
+          {!blankPdf ? (
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#6b7280',
+              }}
+            >
+              Go back to step 1 and upload the blank exam PDF to draw regions.
+            </div>
+          ) : (
+            <div
+              ref={viewportRef}
+              style={{
+                maxHeight: '70vh',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                scrollbarGutter: 'stable',
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              }}
+            >
+              <div
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={onCanvasPointerUp}
+                style={{ position: 'relative', cursor: 'crosshair', touchAction: 'none', userSelect: 'none' }}
+              >
+                <Document
+                  file={blankPdf}
+                  onLoadSuccess={({ numPages: total }) => setNumPages(total)}
+                  loading={<p style={{ padding: '24px', fontSize: '13px', color: '#6b7280' }}>Loading PDF…</p>}
+                  error={<p style={{ padding: '24px', fontSize: '13px', color: '#dc2626' }}>Could not open this PDF.</p>}
                 >
-                  <span
+                  {pageWidth > 0 && (
+                    <Page pageNumber={currentPage} width={pageWidth} renderTextLayer={false} renderAnnotationLayer={false} />
+                  )}
+                </Document>
+                {questions.map((q) => {
+                  if (!q.region || q.region.page !== currentPage) return null
+                  const isSelected = q.qid === activeQid
+                  return (
+                    <div
+                      key={q.qid}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setActiveQid(q.qid)
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: `${q.region.x * 100}%`,
+                        top: `${q.region.y * 100}%`,
+                        width: `${q.region.width * 100}%`,
+                        height: `${q.region.height * 100}%`,
+                        border: `2px solid ${isSelected ? '#16756b' : '#0d9488'}`,
+                        backgroundColor: isSelected ? 'rgba(22, 117, 107, 0.12)' : 'rgba(13, 148, 136, 0.06)',
+                        borderRadius: '4px',
+                        pointerEvents: 'auto',
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          right: '4px',
+                          top: '-20px',
+                          background: '#16756b',
+                          color: '#ffffff',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        {q.qid} · {q.title || 'Question'}
+                      </span>
+                    </div>
+                  )
+                })}
+
+                {draftRect && (
+                  <div
                     style={{
                       position: 'absolute',
-                      right: '4px',
-                      top: '-20px',
-                      background: '#16756b',
-                      color: '#ffffff',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      padding: '2px 6px',
+                      left: `${draftRect.x * 100}%`,
+                      top: `${draftRect.y * 100}%`,
+                      width: `${draftRect.width * 100}%`,
+                      height: `${draftRect.height * 100}%`,
+                      border: '2px dashed #16756b',
+                      backgroundColor: 'rgba(22, 117, 107, 0.15)',
                       borderRadius: '4px',
+                      pointerEvents: 'none',
                     }}
-                  >
-                    {q.qid} · {q.title || 'Question'}
-                  </span>
-                </div>
-              )
-            })}
-
-            {draftRect && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: `${draftRect.x * 100}%`,
-                  top: `${draftRect.y * 100}%`,
-                  width: `${draftRect.width * 100}%`,
-                  height: `${draftRect.height * 100}%`,
-                  border: '2px dashed #16756b',
-                  backgroundColor: 'rgba(22, 117, 107, 0.15)',
-                  borderRadius: '4px',
-                  pointerEvents: 'none',
-                }}
-              />
-            )}
-          </div>
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

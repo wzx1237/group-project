@@ -99,7 +99,7 @@ def grading_queue(assignment_id: str,svc: Service,section: str | None=None,mine:
         # Include late-uploaded papers without inventing scores for ungraded work.
         conn.execute("""INSERT INTO mapping(exam_id,uid,qid,status)
           SELECT p.exam_id,p.uid,r.qid,'Pending' FROM studentpaper p JOIN rubric r USING(exam_id)
-          JOIN exam e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
+          JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
           WHERE p.exam_id=%s ON CONFLICT DO NOTHING""",(exam,))
         rows=conn.execute('SELECT * FROM mapping WHERE exam_id=%s ORDER BY uid,qid',(exam,)).fetchall()
         return [entry(r) for r in rows if not mine or r['directory_id']==svc.actor]
@@ -143,7 +143,7 @@ def exam_decisions(assignment_id: str,svc: Service,student_uid: str | None=None)
     """Every saved decision for enrolled students, by student and question; optionally one student's."""
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn,_):
-        rows=conn.execute('''SELECT d.* FROM decision d JOIN exam e USING(exam_id)
+        rows=conn.execute('''SELECT d.* FROM decision d JOIN assignment e USING(exam_id)
             JOIN enrollment en ON en.uid=d.uid AND en.course_id=e.course_id
             WHERE d.exam_id=%s AND (%s::text IS NULL OR d.uid=%s) ORDER BY d.uid,d.qid''',
             (exam,student_uid,student_uid)).fetchall()
@@ -172,7 +172,6 @@ def get_decision(assignment_id: str,student_uid: str,qid: str,svc: Service):
 def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionIn,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     if body.score_override is not None:
-        # TODO: feature: allow customized deduction/points
         raise HTTPException(422,'Scores are derived from selected criteria; overrides are not supported')
     try:
         labels=[int(x) for x in body.criteria]
@@ -191,12 +190,10 @@ def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionI
 def regrade_queues(assignment_id: str,svc: Service,qid: str | None=None):
     # Named independent queues need their own model; never pretend Mapping.status is one.
     with svc.access(resolve_exam(svc, assignment_id)):
-        # TODO: finish the regrade queue
         raise HTTPException(501,'Named regrade queues are not implemented')
 
 
 @router.post('/regrade-queues/{queue_id}/students/{student_uid}/resolve',response_model=Decision)
 def resolve_regrade(assignment_id: str,queue_id: str,student_uid: str,body: DecisionIn,svc: Service):
     with svc.access(resolve_exam(svc, assignment_id)):
-        # TODO: finished the regrade queue
         raise HTTPException(501,'Named regrade queues are not implemented')

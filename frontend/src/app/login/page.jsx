@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { GraduationCap } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 import { UmdSsoCard } from '@/components/auth/UMDSSOCard'
@@ -14,9 +15,11 @@ const ERRORS = {
   cas_unavailable: "UMD sign-in isn't responding right now. Please try again in a few minutes.",
 }
 
+// sanitizes and validates next redirect path
 const safeNext = (path) =>
   path?.startsWith('/') && !path.startsWith('//') && !/[\\\x00-\x20\x7f]/.test(path) ? path : '/courses'
 
+// login view managing redirect params and sign-in trigger
 function Login() {
   const params = useSearchParams()
   const router = useRouter()
@@ -28,6 +31,7 @@ function Login() {
     if (user) router.replace(next)
   }, [user, next, router])
 
+  // triggers redirect to umd sso login service
   function signIn() {
     setRedirecting(true)
     loginWithUmdSso(next)
@@ -38,7 +42,7 @@ function Login() {
       <div className={styles.card}>
         <div className={styles.brand}>
           <span className={styles.mark}>
-            <Image src="/icons/notebook-pen.svg" width={16} height={16} alt="" />
+            <GraduationCap size={16} color="white" aria-hidden="true" />
           </span>
           GradeFlow
         </div>
@@ -64,6 +68,7 @@ function Login() {
   )
 }
 
+// wraps login view in suspense boundary
 export default function LoginPage() {
   return (
     <Suspense>

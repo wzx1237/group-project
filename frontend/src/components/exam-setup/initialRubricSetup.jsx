@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileText, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 // renders step 3 of the exam setup wizard for initial rubric criteria creation and markdown imports
-export function InitialRubricSetup({ questions = [], onBack, onNext }) {
+export function InitialRubricSetup({ questions = [], onBack, onNext, onChange }) {
   const [rubricQuestions, setRubricQuestions] = useState(
     questions.map((q) => ({
       ...q,
@@ -16,6 +16,18 @@ export function InitialRubricSetup({ questions = [], onBack, onNext }) {
     }))
   )
   const [activeQid, setActiveQid] = useState(questions[0]?.qid || 'Q1')
+  const [creating, setCreating] = useState(false)
+
+  // the wizard keeps the rubric, so going back to an earlier step doesn't lose it
+  useEffect(() => {
+    onChange?.(rubricQuestions)
+  }, [rubricQuestions, onChange])
+
+  async function create() {
+    setCreating(true)
+    await onNext(rubricQuestions)
+    setCreating(false)
+  }
 
   // appends a new rubric criterion deduction to the selected question
   function handleAddCriterion(qid) {
@@ -208,8 +220,8 @@ export function InitialRubricSetup({ questions = [], onBack, onNext }) {
         <Button variant="secondary" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={() => onNext(rubricQuestions)}>
-          Continue to Graders →
+        <Button onClick={create} disabled={creating}>
+          {creating ? 'Creating exam…' : 'Create exam'}
         </Button>
       </div>
     </div>

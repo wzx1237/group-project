@@ -22,7 +22,7 @@ services:
       # overrides .env's 127.0.0.1 default: on the compose network the db is reachable by service name
       DATABASE_URL: postgresql://gradeflow:gradeflow@db:5432/gradeflow
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     volumes:
       - ./data:/data
     depends_on:
@@ -37,7 +37,7 @@ services:
         # baked in at build time (Next.js reads this when it builds routes-manifest.json, not at runtime)
         GRADEFLOW_API: http://backend:8000
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     depends_on:
       - backend
     restart: unless-stopped

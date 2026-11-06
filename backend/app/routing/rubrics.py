@@ -100,7 +100,7 @@ def add_question(assignment_id: str, body: QuestionIn, svc: Service):
         svc.db.add_question(body.qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
         conn.execute("""INSERT INTO mapping(exam_id,uid,qid,status)
             SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
-            JOIN exam e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
+            JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
             WHERE p.exam_id=%s ON CONFLICT DO NOTHING""", (body.qid,exam))
         return question(svc,exam,body.qid)
 

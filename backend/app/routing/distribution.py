@@ -4,11 +4,13 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from app import config, rosters, status, store
+from typing import Annotated
+
+from app import assignments, config, cover_templates, rosters, status, store
 from app.routing.auth import current_user
 from app.processing import TEMPLATE_DIR, match_upload, process_upload
 from app.services.page_crop import save_crop
@@ -34,10 +36,23 @@ def config_error(_, error: config.ConfigError):
 
 
 def _find(db: dict, assignment_id: str) -> dict:
-    for assignment in db["assignments"]:
-        if assignment["id"] == assignment_id:
-            return assignment
-    raise HTTPException(404, "Assignment not found")
+    """The upload-store entry for an assignment. Whether the assignment exists is checked by require_assignment."""
+    return store.entry(db, assignment_id)
+
+
+def require_assignment(request: Request, assignment_id: str, user: Annotated[str, Depends(current_user)]) -> dict:
+    """The assignment (from the database) named in the URL, or 404."""
+    return assignments.find(request.app.state.db, user, assignment_id)
+
+
+AssignmentRecord = Annotated[dict, Depends(require_assignment)]
+# Routes under /api/assignments/{assignment_id} list this so an unknown assignment is a 404.
+CHECKED = [Depends(require_assignment)]
+
+
+def _with_uploads(assignment: dict, db: dict) -> dict:
+    stored = _find(db, assignment["id"])
+    return {**assignment, "uploads": stored["uploads"], "statuses": stored["statuses"]}
 
 
 def _find_upload(db: dict, assignment_id: str, upload_id: str) -> dict:
@@ -57,20 +72,31 @@ def _pdf(path, filename: str, download: bool) -> FileResponse:
 
 
 @router.get("/api/course")
-def get_course():
-    return store.load()
+def get_course(request: Request, user: Annotated[str, Depends(current_user)]):
+    """The user's first course with its assignments and their uploads. See /api/courses for all courses."""
+    courses = assignments.user_courses(request.app.state.db, user)
+    if not courses:
+        return {"course": None, "assignments": []}
+    course = courses[0]
+    db = store.load()
+    return {
+        "course": {k: course[k] for k in ("course_id", "code", "term", "title", "instructor")},
+        "assignments": [_with_uploads(a, db) for a in course["assignments"]],
+    }
 
 
 @router.get("/api/students")
-def get_students(request: Request):
+def get_students(request: Request, user: Annotated[str, Depends(current_user)]):
     """Each student with a status per assignment.
 
     Status is one of submitted / grading / graded / missing, or null while it is
     not yet known (nothing uploaded, or exams not all assigned yet).
     """
-    assignments = store.load()["assignments"]
+    courses = assignments.user_courses(request.app.state.db, user)
+    db = store.load()
+    stored = [_with_uploads(a, db) for a in (courses[0]["assignments"] if courses else [])]
     students = rosters.students(request.app.state.db)
-    per_assignment = {a["id"]: status.student_statuses(a, [s["uid"] for s in students]) for a in assignments}
+    per_assignment = {a["id"]: status.student_statuses(a, [s["uid"] for s in students]) for a in stored}
     return [{**s, "progress": {aid: statuses[s["uid"]] for aid, statuses in per_assignment.items()}} for s in students]
 
 
@@ -79,7 +105,43 @@ def get_staff(request: Request):
     return rosters.staff(request.app.state.db)
 
 
-@router.get("/api/assignments/{assignment_id}/roster")
+class StudentIn(BaseModel):
+    uid: str
+    name: str
+    email: str | None = None
+
+
+@router.post("/api/courses/{course_id}/roster", status_code=201)
+def add_student(request: Request, course_id: int, body: StudentIn, actor: str = Depends(current_user)):
+    """Instructors add a student by UID and name; adding a UID again updates the name and email."""
+    uid, name, email = body.uid.strip(), body.name.strip(), (body.email or "").strip() or None
+    if not (len(uid) == 9 and uid.isdigit()):
+        raise HTTPException(422, "A UID is 9 digits")
+    if not name:
+        raise HTTPException(422, "Enter the student's name")
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
+        staff = conn.execute(
+            """SELECT s.role FROM course_staff cs JOIN staff s USING (directory_id)
+               WHERE cs.course_id = %s AND cs.directory_id = %s""",
+            (course_id, actor),
+        ).fetchone()
+        if staff is None:
+            raise HTTPException(404, "Course not found")
+        if staff["role"] != "instructor":
+            raise HTTPException(403, "Only instructors can add students")
+        student = conn.execute(
+            """INSERT INTO student (uid, name, email) VALUES (%s, %s, %s)
+               ON CONFLICT (uid) DO UPDATE SET name = EXCLUDED.name, email = COALESCE(EXCLUDED.email, student.email)
+               RETURNING uid, name, directory_id, email""",
+            (uid, name, email),
+        ).fetchone()
+        conn.execute("INSERT INTO enrollment (course_id, uid) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                     (course_id, uid))
+    return student
+
+
+@router.get("/api/assignments/{assignment_id}/roster", dependencies=CHECKED)
 def assignment_roster(request: Request, assignment_id: str):
     """Every student with their status for this assignment and a link to their exam, if they have one."""
     assignment = _find(store.load(), assignment_id)
@@ -92,13 +154,51 @@ def assignment_roster(request: Request, assignment_id: str):
     }
 
 
-@router.get("/api/assignments/{assignment_id}")
-def get_assignment(assignment_id: str):
-    return _find(store.load(), assignment_id)
+@router.get("/api/assignments/{assignment_id}", dependencies=CHECKED)
+def get_assignment(assignment: AssignmentRecord):
+    # Scans can only be split once the exam has a cover template.
+    return {**_with_uploads(assignment, store.load()), "cover_template": (TEMPLATE_DIR / f"{assignment['id']}.json").exists()}
 
 
-@router.post("/api/assignments/{assignment_id}/uploads", status_code=201)
-async def upload_pdf(assignment_id: str, background: BackgroundTasks, file: UploadFile = File(...)):
+SAVE_FILE_PATH = {
+    "blank_exam": "UPDATE assignment SET blank_pdf = %s WHERE exam_id = %s",
+    "answer_key": "UPDATE assignment SET answer_key_pdf = %s WHERE exam_id = %s",
+}
+
+
+@router.post("/api/assignments/{assignment_id}/templates", status_code=201)
+async def upload_template(request: Request, assignment: AssignmentRecord, user: Annotated[str, Depends(current_user)],
+                          file: UploadFile = File(...), kind: str = Form("blank_exam", alias="type")):
+    """Save the exam's blank PDF, which also makes its cover template so scans can be split, or its answer key."""
+    if kind not in SAVE_FILE_PATH:
+        raise HTTPException(422, "type must be blank_exam or answer_key")
+    max_bytes = config.load()["max_upload_mb"] * 1024 * 1024
+    pdf = await file.read(max_bytes + 1)
+    if len(pdf) > max_bytes:
+        raise HTTPException(413, "PDF is too large")
+    if not pdf.startswith(b"%PDF-"):
+        raise HTTPException(422, "File is not a PDF")
+    try:
+        save = cover_templates.save_blank_exam if kind == "blank_exam" else cover_templates.save_answer_key
+        path = save(assignment["id"], pdf)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
+        conn.execute(SAVE_FILE_PATH[kind], (path, assignment["exam_id"]))
+    return {"type": kind, "path": path, "cover_template": (TEMPLATE_DIR / f"{assignment['id']}.json").exists()}
+
+
+def _split_and_match(assignment_id: str, upload_id: str, pool) -> None:
+    """Split the PDF into exams, then match each exam to a student, so nobody has to start matching by hand."""
+    process_upload(assignment_id, upload_id)
+    upload = next((u for u in _find(store.load(), assignment_id)["uploads"] if u["id"] == upload_id), None)
+    if upload and upload["status"] == "processed":
+        match_upload(assignment_id, upload_id, pool)
+
+
+@router.post("/api/assignments/{assignment_id}/uploads", status_code=201, dependencies=CHECKED)
+async def upload_pdf(request: Request, assignment_id: str, background: BackgroundTasks, file: UploadFile = File(...)):
     _find(store.load(), assignment_id)
     max_bytes = config.load()["max_upload_mb"] * 1024 * 1024
     upload_id = uuid.uuid4().hex
@@ -135,21 +235,21 @@ async def upload_pdf(assignment_id: str, background: BackgroundTasks, file: Uplo
         "matching_error": None,
     }
     store.update(lambda db: _find(db, assignment_id)["uploads"].append(record))
-    background.add_task(process_upload, assignment_id, upload_id)
+    background.add_task(_split_and_match, assignment_id, upload_id, request.app.state.db)
     return record
 
 
-@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/process", status_code=202)
-def reprocess(assignment_id: str, upload_id: str, background: BackgroundTasks):
+@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/process", status_code=202, dependencies=CHECKED)
+def reprocess(request: Request, assignment_id: str, upload_id: str, background: BackgroundTasks):
     upload = _find_upload(store.load(), assignment_id, upload_id)
     if upload["status"] in ("uploaded", "processing"):
         raise HTTPException(409, "Already processing")
     store.update(lambda db: _find_upload(db, assignment_id, upload_id).update(status="uploaded", error=None))
-    background.add_task(process_upload, assignment_id, upload_id)
+    background.add_task(_split_and_match, assignment_id, upload_id, request.app.state.db)
     return {"status": "uploaded"}
 
 
-@router.delete("/api/assignments/{assignment_id}/uploads/{upload_id}", status_code=204)
+@router.delete("/api/assignments/{assignment_id}/uploads/{upload_id}", status_code=204, dependencies=CHECKED)
 def delete_upload(assignment_id: str, upload_id: str):
     """Remove an upload: its record, the master PDF, and every split PDF made from it."""
     upload = _find_upload(store.load(), assignment_id, upload_id)
@@ -161,13 +261,13 @@ def delete_upload(assignment_id: str, upload_id: str):
     shutil.rmtree(store.SUBMISSION_DIR / assignment_id / upload_id, ignore_errors=True)
 
 
-@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/file")
+@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/file", dependencies=CHECKED)
 def download_master(assignment_id: str, upload_id: str, download: bool = False):
     upload = _find_upload(store.load(), assignment_id, upload_id)
     return _pdf(store.UPLOAD_DIR / assignment_id / f"{upload_id}.pdf", upload["filename"], download)
 
 
-@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/file")
+@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/file", dependencies=CHECKED)
 def download_submission(assignment_id: str, upload_id: str, submission_id: str, download: bool = False):
     upload = _find_upload(store.load(), assignment_id, upload_id)
     submission = next((s for s in upload["submissions"] if s["id"] == submission_id), None)
@@ -177,7 +277,7 @@ def download_submission(assignment_id: str, upload_id: str, submission_id: str, 
     return _pdf(path, f"{assignment_id}_{submission['filename']}", download)
 
 
-@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/match", status_code=202)
+@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/match", status_code=202, dependencies=CHECKED)
 def match_students(request: Request, assignment_id: str, upload_id: str, background: BackgroundTasks):
     upload = _find_upload(store.load(), assignment_id, upload_id)
     if upload["status"] != "processed":
@@ -193,7 +293,7 @@ class Assignment(BaseModel):
     student_uid: str
 
 
-@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/assign")
+@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/assign", dependencies=CHECKED)
 def assign_student(request: Request, assignment_id: str, upload_id: str, submission_id: str, body: Assignment):
     """Manually assign an exam that matching could not place. Auto-matched exams are not editable."""
     if body.student_uid not in {s["uid"] for s in rosters.students(request.app.state.db)}:
@@ -216,7 +316,7 @@ def assign_student(request: Request, assignment_id: str, upload_id: str, submiss
     return store.update(mutate)
 
 
-@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/unassign")
+@router.post("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/unassign", dependencies=CHECKED)
 def unassign_student(assignment_id: str, upload_id: str, submission_id: str):
     """Undo a match or assignment (automatic or manual); the exam goes back to waiting for a grader."""
 
@@ -237,7 +337,7 @@ def unassign_student(assignment_id: str, upload_id: str, submission_id: str):
     return store.update(mutate)
 
 
-@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/uid-image")
+@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/uid-image", dependencies=CHECKED)
 def uid_image(assignment_id: str, upload_id: str, submission_id: str):
     upload = _find_upload(store.load(), assignment_id, upload_id)
     submission = next((s for s in upload["submissions"] if s["id"] == submission_id and s.get("uid_image")), None)
@@ -246,7 +346,7 @@ def uid_image(assignment_id: str, upload_id: str, submission_id: str):
     return FileResponse(store.SUBMISSION_DIR / assignment_id / upload_id / submission["uid_image"], media_type="image/png")
 
 
-@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/panel-image")
+@router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/panel-image", dependencies=CHECKED)
 def panel_image(assignment_id: str, upload_id: str, submission_id: str):
     """The whole identification area of the cover page (UID boxes, handwritten name and directory ID)."""
     upload = _find_upload(store.load(), assignment_id, upload_id)
@@ -262,3 +362,4 @@ def panel_image(assignment_id: str, upload_id: str, submission_id: str):
     if not out.exists():  # made on first request, so exams matched earlier work too
         save_crop(folder / submission["filename"], tuple(region), out)
     return FileResponse(out, media_type="image/png")
+

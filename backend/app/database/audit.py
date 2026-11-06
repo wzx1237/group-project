@@ -84,7 +84,7 @@ class Audit:
       WHERE NOT t.tgisinternal AND t.tgenabled IN ('O', 'A')
         AND t.tgrelid = ANY (ARRAY[
           'staff'::regclass, 'course'::regclass, 'course_staff'::regclass,
-          'student'::regclass, 'enrollment'::regclass, 'Exam'::regclass,
+          'student'::regclass, 'enrollment'::regclass, 'assignment'::regclass,
           'StudentPaper'::regclass, 'Rubric'::regclass, 'Label'::regclass,
           'Mapping'::regclass, 'Decision'::regclass, 'Rubric_Label'::regclass,
           'Decision_Label'::regclass

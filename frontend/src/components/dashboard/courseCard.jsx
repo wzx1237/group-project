@@ -26,8 +26,11 @@ function rowState(assignment) {
     return { status: { label: 'Needs matching', tone: 'warning' }, progress: null, note: `${plural(exams.length, 'exam')} found` }
   }
   const matched = exams.filter((s) => s.match?.state !== 'needs_review').length
+  let status = { label: 'Grading', tone: 'soft' }
+  if (matched !== exams.length) status = { label: 'Needs assignment', tone: 'warning' }
+  else if (assignment.released_at) status = { label: 'Released', tone: 'neutral' }
   return {
-    status: matched === exams.length ? { label: 'Grading', tone: 'soft' } : { label: 'Needs assignment', tone: 'warning' },
+    status,
     progress: { done: matched, total: exams.length },
     note: `${matched} of ${plural(exams.length, 'exam')} fully graded`,
   }
@@ -65,6 +68,9 @@ export function CourseCard({ course, assignments = [], staff, studentCount, onOp
           <Button variant="secondary" onClick={onOpenManageTAs || onOpenStaff}>
             Manage TAs
           </Button>
+          <Link href={`${base}/roster`}>
+            <Button variant="secondary">Students</Button>
+          </Link>
           <Link href={`${base}/exams/new`}>
             <Button>
               <Plus size={14} /> New exam

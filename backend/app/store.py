@@ -1,4 +1,7 @@
-"""JSON-file "database": one course with its assignments and their uploaded PDFs."""
+"""JSON-file store for uploaded PDFs: each assignment's uploads and student statuses, keyed by its slug.
+
+Courses and assignments themselves live in the database (see app.assignments).
+"""
 
 import json
 import threading
@@ -13,26 +16,25 @@ SUBMISSION_DIR = DATA_DIR / "submissions"
 _lock = threading.Lock()
 
 
-def _sync(db: dict) -> dict:
-    """Bring the course and assignment list in line with config.json, keeping uploads and statuses.
+def entry(db: dict, assignment_id: str) -> dict:
+    """The uploads and statuses kept for this assignment, added to `db` empty if it has none yet."""
+    for assignment in db["assignments"]:
+        if assignment["id"] == assignment_id:
+            return assignment
+    assignment = {"id": assignment_id, "uploads": [], "statuses": {}}
+    db["assignments"].append(assignment)
+    return assignment
 
-    Assignments dropped from the config disappear unless they already hold uploads or statuses.
-    """
-    cfg = config.load()
-    existing = {a["id"]: a for a in db.get("assignments", [])}
-    assignments = []
-    for row in cfg["assignments"]:
-        assignment = existing.pop(row["id"], {"uploads": [], "statuses": {}})
-        assignment.update({field: row[field] for field in config.ASSIGNMENT_FIELDS})
-        assignments.append(assignment)
-    assignments += [a for a in existing.values() if a["uploads"] or a["statuses"]]
-    db["course"], db["assignments"] = cfg["course"], assignments
+
+def _read() -> dict:
+    db = json.loads(DB_PATH.read_text()) if DB_PATH.exists() else {}
+    db.setdefault("assignments", [])
     return db
 
 
 def load() -> dict:
     with _lock:
-        db = _sync(json.loads(DB_PATH.read_text()) if DB_PATH.exists() else {})
+        db = _read()
         if not DB_PATH.exists():
             _write(db)
         return db
@@ -48,7 +50,7 @@ def _write(db: dict) -> None:
 def update(mutate) -> dict:
     """Load, apply `mutate(db)`, save atomically, and return the result of mutate."""
     with _lock:
-        db = _sync(json.loads(DB_PATH.read_text()) if DB_PATH.exists() else {})
+        db = _read()
         result = mutate(db)
         _write(db)
         return result

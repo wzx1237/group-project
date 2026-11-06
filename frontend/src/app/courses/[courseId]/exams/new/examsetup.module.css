@@ -40,3 +40,12 @@
   padding: 32px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
+
+.publishError {
+  margin: 0 0 16px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-soft, #fde7e5);
+  color: var(--danger, #b3261e);
+  font-size: 14px;
+}

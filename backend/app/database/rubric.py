@@ -123,7 +123,7 @@ class Rubric:
     """Points and scoring decide every score, so saved scores for this question are recalculated."""
     from psycopg.types.json import Jsonb
     with self.get_worker() as cursor:
-      cursor.execute('SELECT exam_id FROM exam WHERE exam_id=%s FOR UPDATE', (exam_ID,))
+      cursor.execute('SELECT exam_id FROM assignment WHERE exam_id=%s FOR UPDATE', (exam_ID,))
       cursor.execute('UPDATE rubric SET title=%s,grading_method=%s,total_scores=%s,region=%s,scoring=%s WHERE exam_id=%s AND qid=%s',
                      (title, grading_method, total_scores, Jsonb(region), scoring, exam_ID, QID))
       changed = cursor.rowcount > 0

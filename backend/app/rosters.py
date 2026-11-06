@@ -33,7 +33,7 @@ def students(pool: ConnectionPool) -> list[dict]:
     course = config.load()["course"]
     with pool.connection() as conn:
         return conn.execute(
-            """SELECT s.uid, s.name, s.directory_id
+            """SELECT s.uid, s.name, s.directory_id, s.email
                FROM student s JOIN enrollment USING (uid) JOIN course c USING (course_id)
                WHERE c.code = %s AND c.term = %s
                ORDER BY s.name""",
