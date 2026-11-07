@@ -13,7 +13,7 @@ export async function fetchCoursesForStaff() {
 // fetches the complete student roster for a course including enrollment status
 export async function fetchCourseRoster(courseId) {
   try {
-    const students = await apiClient.get('/students')
+    const students = await apiClient.get(`/courses/${courseId}/roster`)
     return Array.isArray(students) ? students : []
   } catch {
     return []

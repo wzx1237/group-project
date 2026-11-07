@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Pencil } from 'lucide-react'
 import { ReleaseGrades } from '@/components/reports/releaseGrades'
 import { formatDateTime } from '@/components/submissions/format'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useCourse } from '@/context/CourseContext'
-import { formatDue } from '@/exam-distribution/lib/status'
-import { fetchReleaseStatus, setGradesReleased } from '@/services/reportExportService'
+import { changeStatus } from '@/exam-distribution/lib/api'
+import { ASSIGNMENT_STATUSES, ORDER, formatDue } from '@/exam-distribution/lib/status'
 import styles from './examHeader.module.css'
 
 const TABS = [
@@ -19,31 +19,46 @@ const TABS = [
   ['reports', 'Reports'],
 ]
 
-// The title, release status and tabs shared by an exam's pages.
-export function ExamHeader({ meta }) {
+// The title, workflow status and its next step, and the tabs shared by an exam's pages.
+export function ExamHeader({ meta, onStatusChange }) {
   const { courseId, examId } = useParams()
   const pathname = usePathname()
-  const { assignments, refresh } = useCourse()
+  const { course, assignments, refresh } = useCourse()
   const exam = assignments.find((a) => a.id === examId)
   const base = `/courses/${courseId}/exams/${examId}`
-  const [releasedAt, setReleasedAt] = useState() // undefined while loading, null when not released
   const [releasing, setReleasing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchReleaseStatus(examId)
-      .then((status) => setReleasedAt(status.released_at))
-      .catch((err) => setError(err.message))
-  }, [examId])
+  const role = course?.role?.toLowerCase()
+  const status = ASSIGNMENT_STATUSES[exam.status]
+  const canAdvance = status?.next && status.who.includes(role)
+  // Instructors can move back one step; reopening a closed assignment hides its grades again.
+  const previous = role === 'instructor' && exam.status !== 'draft' ? ORDER[ORDER.indexOf(exam.status) - 1] : null
 
-  async function unrelease() {
-    if (!window.confirm(`Hide the grades for ${exam.title} again?`)) return
+  async function move(target, confirm = false) {
+    setSaving(true)
+    setError('')
     try {
-      setReleasedAt((await setGradesReleased(examId, false)).released_at)
-      refresh?.()
+      await changeStatus(examId, target, confirm)
+      await refresh?.()
+      onStatusChange?.()
     } catch (err) {
       setError(err.message)
+    } finally {
+      setSaving(false)
     }
+  }
+
+  function advance() {
+    if (status.next === 'closed') setReleasing(true)
+    else move(status.next)
+  }
+
+  function moveBack() {
+    const label = ASSIGNMENT_STATUSES[previous].label.toLowerCase()
+    const warning = exam.status === 'closed' ? ' Students will no longer see their grades.' : ''
+    if (window.confirm(`Move ${exam.title} back to ${label}?${warning}`)) move(previous, true)
   }
 
   return (
@@ -54,9 +69,23 @@ export function ExamHeader({ meta }) {
           <p className={styles.meta}>{[exam.due && `Due ${formatDue(exam.due)}`, meta].filter(Boolean).join(' · ')}</p>
         </div>
         <div className={styles.actions}>
-          {releasedAt && <Badge tone="soft">Released {formatDateTime(releasedAt)}</Badge>}
-          {releasedAt && <Button onClick={unrelease}>Unrelease</Button>}
-          {releasedAt === null && <Button onClick={() => setReleasing(true)}>Release grades</Button>}
+          {course?.role === 'instructor' && (
+            <Button href={`${base}/edit`}>
+              <Pencil size={13} aria-hidden /> Edit Assignment
+            </Button>
+          )}
+          {status && <Badge tone={status.tone}>{status.label}</Badge>}
+          {exam.released_at && <span className={styles.meta}>Released {formatDateTime(exam.released_at)}</span>}
+          {previous && (
+            <Button onClick={moveBack} disabled={saving}>
+              {exam.status === 'closed' ? 'Reopen' : 'Move back'}
+            </Button>
+          )}
+          {canAdvance && (
+            <Button onClick={advance} disabled={saving}>
+              {status.action}
+            </Button>
+          )}
           <Button variant="primary" href={`${base}/grade`}>
             Open grading <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
           </Button>
@@ -86,10 +115,10 @@ export function ExamHeader({ meta }) {
         <ReleaseGrades
           examId={examId}
           examTitle={exam.title}
-          onReleased={(at) => {
-            setReleasedAt(at)
+          onReleased={async () => {
             setReleasing(false)
-            refresh?.()
+            await refresh?.()
+            onStatusChange?.()
           }}
           onClose={() => setReleasing(false)}
         />

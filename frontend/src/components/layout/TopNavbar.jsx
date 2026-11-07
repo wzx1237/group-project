@@ -5,20 +5,32 @@ import { GraduationCap } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import styles from './TopNavbar.module.css'
 
-// renders the top navigation bar with default brand icon, breadcrumb trail, and user account menu
+// renders the top navigation bar with default brand icon, breadcrumb trail, centered Gradeflow banner, and user account menu
 export function TopNavbar({ breadcrumbs = [], saveStatus, onOpenChangeLog, backAction, currentUser }) {
   return (
     <nav className={styles.bar}>
       <div className={styles.trail}>
-        <Link href="/courses" className={styles.mark} aria-label="GradeFlow home">
-          <GraduationCap size={16} color="white" aria-hidden="true" />
-        </Link>
-        <ol className={styles.crumbs}>
-          {breadcrumbs.map((crumb) => (
-            <li key={crumb.label}>{crumb.href ? <Link href={crumb.href}>{crumb.label}</Link> : crumb.label}</li>
-          ))}
-        </ol>
+        {breadcrumbs.length > 0 && (
+          <>
+            <Link href="/courses" className={styles.mark} aria-label="GradeFlow home">
+              <GraduationCap size={16} color="white" aria-hidden="true" />
+            </Link>
+            <ol className={styles.crumbs}>
+              {breadcrumbs.map((crumb) => (
+                <li key={crumb.label}>{crumb.href ? <Link href={crumb.href}>{crumb.label}</Link> : crumb.label}</li>
+              ))}
+            </ol>
+          </>
+        )}
       </div>
+
+      <div className={styles.banner}>
+        <Link href="/courses" className={styles.bannerLink} aria-label="Gradeflow home">
+          <GraduationCap size={18} strokeWidth={2.2} className={styles.bannerIcon} aria-hidden="true" />
+          <span className={styles.bannerText}>Gradeflow</span>
+        </Link>
+      </div>
+
       {currentUser && (
         <details className={styles.account}>
           <summary className={styles.trigger} aria-label={`Account menu for ${currentUser.name}`}>

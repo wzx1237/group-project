@@ -11,7 +11,10 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from app import config
+from app import config, workflow
+
+# Grades can be saved or claimed only in these assignment statuses.
+GRADING = ('grading', 'in_review')
 
 
 def token(value):
@@ -104,6 +107,7 @@ class GradingService:
         if len(labels) != len(set(labels)):
             raise HTTPException(422, 'Duplicate labels')
         with self.access(exam, qid) as (conn, role):
+            workflow.require(conn, exam, GRADING, 'Grading')
             state = self._workspace(conn, exam, uid, qid, role, writing=True)
             match(expected, state['grade_token'])
             if bool(state['decision']) != regrade:
@@ -128,6 +132,7 @@ class GradingService:
     def change_rubric(self, exam, qid, title, description, deduction, expected):
         deduction = amount(deduction)
         with self.access(exam, qid, edit=True) as (conn, _):
+            workflow.require(conn, exam, workflow.OPEN, 'Changing the rubric')
             match(expected, token(self.rubric(conn, exam, qid)))
             label = self.db.add_label(title, description, deduction, exam_ID=exam)
             self.db.add_rubric_label(qid, label, exam_ID=exam)
@@ -137,6 +142,7 @@ class GradingService:
 
     def start(self, exam, qid):
         with self.access(exam, qid) as (conn, role):
+            workflow.require(conn, exam, GRADING, 'Grading')
             # Papers may arrive after rubric creation. Initialize only real,
             # enrolled answers, without inventing a student or a decision.
             conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)
@@ -157,6 +163,7 @@ class GradingService:
 
     def release(self, exam, uid, qid):
         with self.access(exam, qid) as (conn, role):
+            workflow.require(conn, exam, GRADING, 'Releasing an answer')
             state = self._workspace(conn, exam, uid, qid, role, writing=True)
             if state['assignment']['directory_id'] != self.actor:
                 raise HTTPException(403, 'Only the owner can release an answer')

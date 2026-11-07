@@ -13,6 +13,8 @@ import styles from './reports.module.css'
 const icon = { size: 13, strokeWidth: 1.6, 'aria-hidden': true }
 
 function grading(student) {
+  if (student.noShow) return ['neutral', 'No-show (0)']
+  if (student.status === 'excused') return ['outline', 'Excused']
   if (!student.hasExam) return ['outline', 'No exam']
   if (!student.questionCount) return ['neutral', 'No rubric yet']
   if (student.graded) return ['soft', 'Graded']
@@ -32,12 +34,12 @@ export default function ExamReportsPage() {
       .catch((err) => setError(err.message))
   }, [examId])
 
-  const exams = students?.filter((s) => s.hasExam) ?? []
-  const graded = exams.filter((s) => s.graded).length
+  const counted = students?.filter((s) => s.hasExam || s.noShow) ?? []
+  const graded = counted.filter((s) => s.graded).length
 
   return (
     <main className={styles.page}>
-      <ExamHeader meta={students && `${graded} of ${plural(exams.length, 'exam')} fully graded`} />
+      <ExamHeader meta={students && `${graded} of ${plural(counted.length, 'student')} graded`} />
 
       {error && (
         <p className={styles.error} role="alert">
@@ -93,7 +95,7 @@ export default function ExamReportsPage() {
                         <Badge tone={tone}>{label}</Badge>
                       </td>
                       <td>
-                        {s.hasExam && (
+                        {(s.hasExam || s.noShow) && (
                           <div className={styles.reportActions}>
                             <Button size="sm" href={reportUrl(examId, s.uid)} target="_blank" rel="noreferrer">
                               <Eye {...icon} /> Preview

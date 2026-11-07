@@ -1,7 +1,8 @@
 
 from typing import Literal, Annotated
 from app.grading.exams import resolve_exam
-from app.grading.service import GradingService, token
+from app import workflow
+from app.grading.service import GRADING, GradingService, token
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -109,6 +110,7 @@ def grading_queue(assignment_id: str,svc: Service,section: str | None=None,mine:
 def claim(assignment_id: str,qid: str,student_uid: str,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam,qid) as (conn,_):
+        workflow.require(conn,exam,GRADING,'Grading')
         row=conn.execute("""UPDATE mapping SET directory_id=%s,status=CASE WHEN lower(status)='regrade' THEN 'Regrade' ELSE 'InProgress' END
           WHERE exam_id=%s AND uid=%s AND qid=%s AND (directory_id IS NULL OR directory_id=%s)
           AND lower(status)<>'finished' RETURNING *""",(svc.actor,exam,student_uid,qid,svc.actor)).fetchone()
@@ -129,6 +131,7 @@ def release(assignment_id: str,qid: str,student_uid: str,svc: Service):
 def reassign(assignment_id: str,body: ReassignIn,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam,body.qid) as (conn,_):
+        workflow.require(conn,exam,GRADING,'Reassigning answers')
         if body.grader_directory_id is not None:
             svc.db._validate_graders(conn.cursor(),[body.grader_directory_id],exam)
         row=conn.execute('UPDATE mapping SET directory_id=%s WHERE exam_id=%s AND uid=%s AND qid=%s RETURNING *',

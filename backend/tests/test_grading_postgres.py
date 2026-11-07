@@ -44,7 +44,9 @@ def native(monkeypatch, tmp_path):
         conn.execute("INSERT INTO staff VALUES ('alice','Alice',NULL,'ta'),('bob','Bob',NULL,'ta'),('teacher','Teacher',NULL,'instructor')")
         conn.execute("INSERT INTO course(code,term) VALUES ('CMSC','Fall'),('OTHER','Fall')")
         conn.execute("INSERT INTO course_staff VALUES (1,'alice'),(1,'bob'),(1,'teacher')")
-        conn.execute("INSERT INTO assignment(course_id,exam_name,slug) VALUES (1,'Exam','exam-1'),(2,'Other Exam','other-exam')")
+        # Grading is only allowed while an assignment is grading or in review (app.workflow).
+        conn.execute("""INSERT INTO assignment(course_id,exam_name,slug,status)
+            VALUES (1,'Exam','exam-1','grading'),(2,'Other Exam','other-exam','grading')""")
         conn.execute("INSERT INTO student(uid,name) VALUES ('123456789','Student'),('234567890','Student Two')")
         conn.execute("INSERT INTO enrollment VALUES (1,123456789),(1,234567890)")
         conn.execute("INSERT INTO studentpaper VALUES (1,123456789,'paper.pdf',NULL),(1,234567890,'paper.pdf',NULL)")
@@ -74,6 +76,11 @@ def save(client, labels, *, regrade=False, snapshot=None):
     snapshot = snapshot or client.get(BASE + '/workspace').json()
     return client.request('PUT' if regrade else 'POST', BASE + '/grade',
         headers={'If-Match': snapshot['grade_token']}, json={'labels': labels, 'comments': 'Reviewed'})
+
+
+def set_status(database, status):
+    with database.get_connection() as conn:
+        conn.execute('UPDATE assignment SET status=%s WHERE exam_id=1', (status,))
 
 
 def test_grade_rubric_regrade_and_persistence(native):
@@ -214,12 +221,16 @@ def test_rollback_includes_grade_and_audit(native, monkeypatch):
 
 def test_staff_question_creation_and_release(native):
     client, database, _, _, app = native
+    # Questions are added while the assignment is a draft, never once grading has started.
+    assert client.post('/api/exams/1/rubric/questions', json={'qid':'Q3','total_score':'10'}).status_code == 409
+    set_status(database, 'draft')
     # TAs and instructors have the same rubric permissions.
     created = client.post('/api/exams/1/rubric/questions', json={'qid':'Q3','total_score':'10'})
     assert created.status_code == 201, created.text
     app.dependency_overrides[current_user] = lambda: 'teacher'
     assert client.post('/api/exams/1/rubric/questions',
                        json={'qid':'Q3','total_score':'10'}).status_code == 409
+    set_status(database, 'grading')
     app.dependency_overrides[current_user] = lambda: 'bob'
     state = client.post('/api/exams/1/questions/Q3/start').json()
     base = f"/api/exams/1/students/{state['UID']}/questions/Q3"
@@ -276,10 +287,15 @@ def test_frontend_rubric_edit_recalculates_and_keeps_notes_private(native):
     app.dependency_overrides[current_user] = lambda: 'teacher'
     base='/api/assignments/1/rubric'
     assert client.get(base).status_code == 200
+    set_status(database, 'draft')
     created=client.post(base+'/questions',json={'qid':'Q9','title':'Chain rule','total_score':5})
     assert created.status_code==201,created.text
     assert created.json()['title']=='Chain rule'
+    set_status(database, 'grading')
+    # A question's title and points can change during grading, but not its region or whether it exists.
     assert client.patch(base+'/questions/Q9',json={'qid':'Q9','title':'Derivative','total_score':6}).status_code==200
+    assert client.patch(base+'/questions/Q9',json={'qid':'Q9','total_score':6,'region':{'page':1}}).status_code==409
+    assert client.delete(base+'/questions/Q9').status_code==409
     url='/api/assignments/1/submissions/123456789/questions/Q1/decision'
     saved=client.put(url,json={'criteria':['1','2'],'comment':'Public','internal_note':'Private'})
     assert saved.status_code==200,saved.text
@@ -293,6 +309,7 @@ def test_frontend_rubric_edit_recalculates_and_keeps_notes_private(native):
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==0
     assert client.delete(base+'/criteria/2').status_code==204
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores'] is None
+    set_status(database, 'draft')
     assert client.delete(base+'/questions/Q9').status_code==204
     app.dependency_overrides[current_user] = lambda: 'alice'
     assert client.patch(base+'/criteria/3',json={'title':'TA edit','deduction':0}).status_code==200

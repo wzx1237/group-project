@@ -46,10 +46,11 @@ def test_upload_split_match_and_assign(staff_client):
     assigned = staff_client.post(f"{exam_url}/assign", json={"student_uid": student["uid"]})
     assert assigned.json()["match"]["state"] == "assigned"
 
+    # Without PostgreSQL there are no stored statuses (see test_workflow_postgres.py); the exam link still shows.
     roster = staff_client.get("/api/assignments/quiz-1/roster").json()["students"]
-    statuses = {s["uid"]: s["status"] for s in roster}
-    assert statuses.pop(student["uid"]) == "submitted"
-    assert set(statuses.values()) == {"missing"}
+    submissions = {s["uid"]: s["submission"] for s in roster}
+    assert submissions.pop(student["uid"]) == {"upload_id": upload["id"], "submission_id": exam["id"]}
+    assert set(submissions.values()) == {None}
 
 
 def test_restart_marks_unfinished_uploads_failed(settings):
@@ -67,4 +68,4 @@ def test_unknown_assignment_is_404(staff_client):
 
 def test_assignment_has_no_uploads_until_one_is_made(staff_client):
     assignment = staff_client.get("/api/assignments/quiz-2").json()
-    assert (assignment["id"], assignment["kind"], assignment["uploads"], assignment["statuses"]) == ("quiz-2", "quiz", [], {})
+    assert (assignment["id"], assignment["kind"], assignment["uploads"]) == ("quiz-2", "quiz", [])

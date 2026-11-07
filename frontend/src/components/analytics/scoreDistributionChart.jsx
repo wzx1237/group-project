@@ -23,9 +23,6 @@ export function ScoreDistributionChart({ distribution, fullyGraded, totalPoints 
         <h2 id="distribution-heading" className={styles.cardTitle}>
           Score distribution
         </h2>
-        <p className={styles.cardMeta}>
-          {plural(fullyGraded, 'fully graded submission')} · {distribution.size}-pt buckets
-        </p>
       </div>
 
       {distribution.buckets.length ? (

@@ -5,6 +5,7 @@ import { GraduationCap } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 import { UmdSsoCard } from '@/components/auth/UMDSSOCard'
+import { TopNavbar } from '@/components/layout/TopNavbar'
 import { useAuth } from '@/hooks/useAuth'
 import { loginWithUmdSso } from '@/services/authService'
 import styles from './login.module.css'
@@ -38,8 +39,10 @@ function Login() {
   }
 
   return (
-    <main className={styles.page}>
-      <div className={styles.card}>
+    <div className={styles.wrapper}>
+      <TopNavbar />
+      <main className={styles.page}>
+        <div className={styles.card}>
         <div className={styles.brand}>
           <span className={styles.mark}>
             <GraduationCap size={16} color="white" aria-hidden="true" />
@@ -65,6 +68,7 @@ function Login() {
         </div>
       </div>
     </main>
+    </div>
   )
 }
 

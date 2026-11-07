@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Info } from 'lucide-react'
+import { QuestionPerformanceCard } from '@/components/analytics/questionPerformanceCard'
 import { ScoreDistributionChart } from '@/components/analytics/scoreDistributionChart'
 import { SummaryStatCards } from '@/components/analytics/summaryStatCards'
 import { ExamHeader } from '@/components/exam/examHeader'
@@ -38,18 +39,13 @@ export default function ExamAnalyticsPage() {
 
       {analytics ? (
         <>
-          <p className={styles.note}>
-            <Info size={14} strokeWidth={1.6} aria-hidden />
-            {analytics.fullyGraded
-              ? `Based on ${plural(analytics.fullyGraded, 'fully graded submission')}. Updates as grading continues.`
-              : 'No submission is fully graded yet. Class results appear once every question on an exam is graded.'}
-          </p>
           <SummaryStatCards stats={analytics.stats} totalPoints={analytics.totalPoints} />
           <ScoreDistributionChart
             distribution={analytics.distribution}
             fullyGraded={analytics.fullyGraded}
             totalPoints={analytics.totalPoints}
           />
+          <QuestionPerformanceCard questions={analytics.questions} />
         </>
       ) : (
         !error && <p className={styles.loading}>Loading analytics…</p>

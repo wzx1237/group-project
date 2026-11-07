@@ -6,6 +6,13 @@ export const getCourses = () => request('/courses')
 
 export const createCourse = (body) => request('/courses', { method: 'POST', body: JSON.stringify(body) })
 
+export const updateCourse = (courseId, body) =>
+  request(`/courses/${courseId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
 export const getAssignment = (assignmentId) => request(`/assignments/${assignmentId}`)
 
 export function uploadPdf(assignmentId, file) {
@@ -30,6 +37,10 @@ export const getStudents = () => request('/students')
 
 export const getStaff = () => request('/staff')
 
+export const getCourseStudents = (courseId) => request(`/courses/${courseId}/roster`)
+
+export const getCourseStaff = (courseId) => request(`/courses/${courseId}/staff`)
+
 export const getAssignmentRoster = (assignmentId) => request(`/assignments/${assignmentId}/roster`)
 
 export const matchUpload = (assignmentId, uploadId) =>
@@ -47,6 +58,21 @@ export const uidImageUrl = (assignmentId, uploadId, submissionId) =>
 
 export const panelImageUrl = (assignmentId, uploadId, submissionId) =>
   `/api/assignments/${assignmentId}/uploads/${uploadId}/submissions/${submissionId}/panel-image`
+
+export const changeStatus = (assignmentId, status, confirm = false) =>
+  request(`/assignments/${assignmentId}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, confirm }),
+  })
+
+// mark is 'excused', 'no_show', or null to undo either
+export const markStudent = (assignmentId, uid, mark, note = null) =>
+  request(`/assignments/${assignmentId}/students/${uid}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: mark, note }),
+  })
 
 export const unassignSubmission = (assignmentId, uploadId, submissionId) =>
   request(`/assignments/${assignmentId}/uploads/${uploadId}/submissions/${submissionId}/unassign`, { method: 'POST' })

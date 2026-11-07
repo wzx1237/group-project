@@ -46,3 +46,53 @@ li:not(:last-child) > .row {
   width: 16px;
   height: 16px;
 }
+
+.item {
+  position: relative;
+}
+
+.type {
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.delete {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  display: flex;
+  padding: 4px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.delete:hover {
+  background: #fef2f2;
+}
+
+.edit {
+  position: absolute;
+  top: 50%;
+  right: 56px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.edit:hover {
+  background: var(--row-highlight);
+}

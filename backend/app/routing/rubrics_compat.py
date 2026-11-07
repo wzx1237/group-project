@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app import workflow
 from app.grading.service import amount
 from app.routing.grading_compat import Expected, Service
 
@@ -37,6 +38,7 @@ def add_label(exam_ID: int, QID: str, body: CriterionIn, svc: Service, if_match:
 def add_question(exam_ID: int, body: QuestionIn, svc: Service):
     """Initialize a question; existing exam creation/assignment methods stay intact."""
     with svc.access(exam_ID) as (conn, _):
+        workflow.require(conn, exam_ID, ('draft',), 'Adding a question')
         conn.execute('INSERT INTO rubric(exam_id,qid,grading_method,total_scores) VALUES(%s,%s,%s,%s)',
                      (exam_ID, body.qid, body.grading_method, amount(body.total_score)))
         conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)

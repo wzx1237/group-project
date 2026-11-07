@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app import assignments
+from app import assignments, cover_templates, store, workflow
 from app.assignments import courses_for
 from app.routing.auth import current_user
 
@@ -31,10 +31,28 @@ class AssignmentEdit(BaseModel):
     short: str | None = Field(default=None, max_length=20)
 
 
+class StatusIn(BaseModel):
+    status: Literal[workflow.STATUSES]
+    confirm: bool = False  # required to move back to an earlier status
+
+
+class StudentMarkIn(BaseModel):
+    """Excuse a student (makeup pending) or mark them a no-show (0); null undoes either."""
+    status: Literal[workflow.MARKS] | None
+    note: str | None = Field(default=None, max_length=500)
+
+
 class CourseIn(BaseModel):
     code: str = Field(min_length=1, max_length=20)
     term: str = Field(min_length=1, max_length=30)
     title: str | None = Field(default=None, max_length=100)
+
+
+class CourseEdit(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=20)
+    term: str | None = Field(default=None, min_length=1, max_length=30)
+    title: str | None = Field(default=None, max_length=100)
+    image: str | None = None
 
 
 @router.post('/courses', status_code=201)
@@ -59,12 +77,60 @@ def create_course(body: CourseIn, request: Request, user: Staff):
         return next(c for c in courses_for(conn, user) if c['course_id'] == row['course_id'])
 
 
+@router.patch('/courses/{course_id}')
+def edit_course(course_id: int, body: CourseEdit, request: Request, user: Staff):
+    """Course staff edit a course's code, term, title, or banner image."""
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
+        if not assignments.is_member(conn, course_id, user):
+            raise HTTPException(403, 'Not a member of this course')
+        existing = conn.execute('SELECT * FROM course WHERE course_id = %s', (course_id,)).fetchone()
+        if existing is None:
+            raise HTTPException(404, 'Course not found')
+
+        updates = []
+        params = []
+        if body.code is not None:
+            code = body.code.strip()
+            if not code:
+                raise HTTPException(422, 'Course code cannot be empty')
+            updates.append("code = %s")
+            params.append(code)
+        if body.term is not None:
+            term = body.term.strip()
+            if not term:
+                raise HTTPException(422, 'Term cannot be empty')
+            updates.append("term = %s")
+            params.append(term)
+        if body.title is not None:
+            title = body.title.strip() or None
+            updates.append("title = %s")
+            params.append(title)
+        if body.image is not None:
+            image = body.image.strip() or None
+            try:
+                conn.execute("ALTER TABLE course ADD COLUMN IF NOT EXISTS image TEXT")
+            except Exception:
+                pass
+            updates.append("image = %s")
+            params.append(image)
+
+        if updates:
+            params.append(course_id)
+            conn.execute(f"UPDATE course SET {', '.join(updates)} WHERE course_id = %s", params)
+
+        return next((c for c in courses_for(conn, user) if c['course_id'] == course_id), None)
+
+
+
 @router.post('/courses/{course_id}/assignments', status_code=201)
 def create_assignment(course_id: int, body: AssignmentIn, request: Request, user: Staff):
     db = request.app.state.grading_db
     with db.audit_context(actor_ID=user), db.get_connection() as conn:
         if not assignments.is_member(conn, course_id, user):
             raise HTTPException(403, 'Not a member of this course')
+        if not assignments.is_instructor(conn, user):
+            raise HTTPException(403, 'Only instructors can create exams')
         return assignments.create(conn, course_id, **body.model_dump())
 
 
@@ -76,4 +142,37 @@ def edit_assignment(assignment_id: str, body: AssignmentEdit, request: Request, 
     current = assignments.find(request.app.state.db, user, assignment_id)
     db = request.app.state.grading_db
     with db.audit_context(actor_ID=user), db.get_connection() as conn:
+        if not assignments.is_instructor(conn, user):
+            raise HTTPException(403, 'Only instructors can edit assignments')
         return assignments.update(conn, current['exam_id'], fields)
+
+
+@router.delete('/assignments/{assignment_id}', status_code=204)
+def delete_assignment(assignment_id: str, request: Request, user: Staff):
+    current = assignments.find(request.app.state.db, user, assignment_id)
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
+        if not assignments.is_instructor(conn, user):
+            raise HTTPException(403, 'Only instructors can delete assignments')
+        assignments.delete(conn, current['exam_id'])
+    # after the database delete has committed, remove its uploads and every file saved for it
+    store.update(lambda data: data.update(assignments=[a for a in data['assignments'] if a['id'] != assignment_id]))
+    cover_templates.delete_files(assignment_id)
+
+
+@router.put('/assignments/{assignment_id}/status')
+def change_status(assignment_id: str, body: StatusIn, request: Request, user: Staff):
+    """Move the assignment through draft -> collecting -> grading -> in_review -> closed (see app.workflow)."""
+    current = assignments.find(request.app.state.db, user, assignment_id)
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
+        workflow.change_status(conn, current['exam_id'], body.status, user, confirm=body.confirm)
+        return assignments.update(conn, current['exam_id'], {})
+
+
+@router.put('/assignments/{assignment_id}/students/{uid}/status')
+def mark_student(assignment_id: str, uid: str, body: StudentMarkIn, request: Request, user: Staff):
+    current = assignments.find(request.app.state.db, user, assignment_id)
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
+        return workflow.mark_student(conn, current['exam_id'], uid, body.status, user, body.note)

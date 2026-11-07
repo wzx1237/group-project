@@ -27,6 +27,12 @@ export async function request(path, options = {}) {
       const json = await response.json()
       detail = json.detail || json.message || detail
     } catch {}
+    // Workflow refusals send { message, problems?, confirm_required? }; keep them on the error for the caller.
+    if (detail && typeof detail === 'object') {
+      const error = new Error([detail.message, ...(detail.problems || [])].filter(Boolean).join('. '))
+      error.detail = detail
+      throw error
+    }
     throw new Error(detail)
   }
 

@@ -47,7 +47,11 @@ def _questions(rubric):
 
 
 def exam_reports(conn, exam, student=None):
-    """The exam's details and one report per enrolled student with a scanned paper, sorted by name."""
+    """The exam's details and one report per enrolled student with a scanned paper or marked a no-show, by name.
+
+    A question counts as graded once its mapping is Finished, the same rule the assignment workflow uses.
+    A no-show has no scan and scores 0 on every question.
+    """
     info = conn.execute('''SELECT e.exam_name, e.released_at, c.code, c.term FROM assignment e
         JOIN course c USING(course_id) WHERE e.exam_id=%s''', (exam,)).fetchone()
     questions = _questions(conn.execute('SELECT qid, title, total_scores FROM rubric WHERE exam_id=%s',
@@ -55,22 +59,32 @@ def exam_reports(conn, exam, student=None):
     info = {**info, 'questions': len(questions), 'possible': sum(q['total_scores'] or 0 for q in questions)}
     decisions = {(d['uid'], d['qid']): d for d in conn.execute(
         'SELECT uid, qid, record_id, scores, comments_remark FROM decision WHERE exam_id=%s', (exam,)).fetchall()}
+    finished = {(m['uid'], m['qid']) for m in conn.execute(
+        "SELECT uid, qid FROM mapping WHERE exam_id=%s AND lower(status)='finished'", (exam,)).fetchall()}
     applied = {}
     for row in conn.execute('''SELECT dl.record_id, l.title, l.deduction FROM decision_label dl
         JOIN label l ON (l.exam_id,l.label_id)=(dl.exam_id,dl.label_id)
         WHERE dl.exam_id=%s ORDER BY l.label_id''', (exam,)).fetchall():
         applied.setdefault(row['record_id'], []).append(row)
-    students = conn.execute('''SELECT p.uid, s.name, p.scanned_pdf FROM studentpaper p
+    students = conn.execute('''SELECT p.uid, s.name, p.scanned_pdf, false AS no_show FROM studentpaper p
         JOIN student s USING(uid) JOIN assignment e USING(exam_id)
         JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-        WHERE p.exam_id=%s AND (%s::text IS NULL OR p.uid=%s) ORDER BY s.name, p.uid''',
-                            (exam, student, student)).fetchall()
+        WHERE p.exam_id=%s AND (%s::text IS NULL OR p.uid=%s)
+        UNION ALL
+        SELECT a.uid, s.name, NULL, true FROM assignment_student a JOIN student s USING(uid)
+        JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=a.uid AND en.course_id=e.course_id
+        WHERE a.exam_id=%s AND a.status='no_show' AND (%s::text IS NULL OR a.uid=%s)
+          AND NOT EXISTS (SELECT 1 FROM studentpaper p WHERE p.exam_id=a.exam_id AND p.uid=a.uid)
+        ORDER BY name, uid''', (exam, student, student, exam, student, student)).fetchall()
     reports = []
     for s in students:
         rows = []
         for q in questions:
             d = decisions.get((s['uid'], q['qid']))
-            graded = d is not None and d['scores'] is not None
+            graded = (s['uid'], q['qid']) in finished and d is not None and d['scores'] is not None
+            if s['no_show']:
+                rows.append({**q, 'score': 0, 'criteria': [], 'comment': None})
+                continue
             rows.append({**q, 'score': d['scores'] if graded else None,
                          'criteria': applied.get(d['record_id'], []) if graded else [],
                          'comment': d['comments_remark'] if d else None})
@@ -97,6 +111,8 @@ def _html(info, report):
            f"<p class='meta'>{escape(info['code'])} · {escape(info['term'])}</p>",
            f"<p>{escape(report['name'])} · UID {escape(report['uid'])}</p>",
            f"<p class='total'>Total score: <b>{points(report['total'])} / {points(report['possible'])}</b></p>"]
+    if report['no_show']:
+        out.append("<p class='ungraded'>Did not take this assignment; every question scores 0.</p>")
     for q in report['questions']:
         title = f" · {escape(q['title'])}" if q['title'] else ''
         score = points(q['score']) if q['score'] is not None else '—'
@@ -128,7 +144,7 @@ def report_pdf(info, report):
         writer.end_page()
     writer.close()
     with pymupdf.open('pdf', buffer.getvalue()) as doc:
-        scan = _scan(report['scanned_pdf'])
+        scan = report['scanned_pdf'] and _scan(report['scanned_pdf'])
         if scan:
             with pymupdf.open(scan) as pages:
                 doc.insert_pdf(pages)

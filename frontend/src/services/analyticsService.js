@@ -2,7 +2,16 @@
 // Class results only count fully graded submissions, as the proposal says.
 
 import { getAssignmentRoster } from '@/exam-distribution/lib/api'
-import { formatNumber, gradingProgress, rubricPoints, topLevel } from '@/lib/rubric'
+import {
+  appliedCriteria,
+  formatNumber,
+  gradingProgress,
+  partLabel,
+  partsOf,
+  questionScore,
+  rubricPoints,
+  topLevel,
+} from '@/lib/rubric'
 import { fetchExamDecisions } from './gradingDecisionService'
 import { fetchExamRubric } from './rubricService'
 
@@ -34,6 +43,21 @@ function distribution(scores, totalPoints) {
   return { size, buckets }
 }
 
+// For each graded question (each subquestion, for questions that have them): how many students were graded on it and
+// how many got full credit. Unlike the class results, this counts a question as soon as it's graded.
+function questionPerformance(questions, studentDecisions) {
+  return topLevel(questions).flatMap((question, i) => {
+    const label = `Q${i + 1}`
+    const parts = partsOf(questions, question.qid)
+    const gradable = parts.length ? parts.map((part, j) => [part, partLabel(label, j)]) : [[question, label]]
+    return gradable.map(([q, name]) => {
+      const graded = studentDecisions.map((d) => d[q.qid]).filter((decision) => appliedCriteria(q, decision).length)
+      const correct = graded.filter((decision) => questionScore(q, decision) === q.total_score).length
+      return { qid: q.qid, label: name, title: q.title, graded: graded.length, correct }
+    })
+  })
+}
+
 export async function fetchExamAnalytics(examId) {
   const [rubric, decisions, roster] = await Promise.all([
     fetchExamRubric(examId),
@@ -62,6 +86,10 @@ export async function fetchExamAnalytics(examId) {
         }
       : null,
     distribution: distribution(scores, totalPoints),
+    questions: questionPerformance(
+      rubric.questions,
+      submitted.map((s) => decisions[s.uid] ?? {}),
+    ),
   }
 }
 

@@ -87,11 +87,11 @@ class Audit:
           'student'::regclass, 'enrollment'::regclass, 'assignment'::regclass,
           'StudentPaper'::regclass, 'Rubric'::regclass, 'Label'::regclass,
           'Mapping'::regclass, 'Decision'::regclass, 'Rubric_Label'::regclass,
-          'Decision_Label'::regclass
+          'Decision_Label'::regclass, 'assignment_student'::regclass
         ])
       """).fetchone()
     if (not row['has_outbox'] or row['replication_role'] != 'origin'
-        or row['row_triggers'] != 13 or row['truncate_triggers'] != 13):
+        or row['row_triggers'] != 14 or row['truncate_triggers'] != 14):
       raise RuntimeError('Audit schema is missing or disabled; run the supplied schema/migration first')
 
   @contextmanager

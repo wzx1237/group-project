@@ -1,17 +1,10 @@
 // Rubrics, saved in the database through backend/app/routing/rubrics.py.
 
-import { parentQid } from '@/lib/rubric'
+import { nextQid, parentQid } from '@/lib/rubric'
 import { request } from '@/services/apiClient'
 
 const base = (examId) => `/assignments/${examId}/rubric`
 const send = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-
-// Q1, Q2, ... and Q1.1, Q1.2 for the parts of Q1, as in the proposal.
-function nextQid(questions, parent) {
-  const used = questions.filter((q) => parentQid(q.qid) === parent).map((q) => Number(q.qid.split(/[Q.]/).pop()))
-  const n = Math.max(0, ...used) + 1
-  return parent ? `${parent}.${n}` : `Q${n}`
-}
 
 function findQuestion(questions, qid) {
   const question = questions.find((q) => q.qid === qid)

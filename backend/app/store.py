@@ -1,4 +1,4 @@
-"""JSON-file store for uploaded PDFs: each assignment's uploads and student statuses, keyed by its slug.
+"""JSON-file store for uploaded PDFs: each assignment's uploads and their matching, keyed by its slug.
 
 Courses and assignments themselves live in the database (see app.assignments).
 """
@@ -17,11 +17,11 @@ _lock = threading.Lock()
 
 
 def entry(db: dict, assignment_id: str) -> dict:
-    """The uploads and statuses kept for this assignment, added to `db` empty if it has none yet."""
+    """The uploads kept for this assignment, added to `db` empty if it has none yet."""
     for assignment in db["assignments"]:
         if assignment["id"] == assignment_id:
             return assignment
-    assignment = {"id": assignment_id, "uploads": [], "statuses": {}}
+    assignment = {"id": assignment_id, "uploads": []}
     db["assignments"].append(assignment)
     return assignment
 

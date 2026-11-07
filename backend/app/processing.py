@@ -42,8 +42,8 @@ def process_upload(assignment_id: str, upload_id: str) -> None:
         update_upload(assignment_id, upload_id, status="failed", error=str(error) or type(error).__name__)
 
 
-def match_upload(assignment_id: str, upload_id: str, pool) -> None:
-    """Read each exam's UID and match it to the roster. Runs in the background."""
+def match_upload(assignment_id: str, upload_id: str, pool, course_id: int) -> None:
+    """Read each exam's UID and match it to the roster of the assignment's course. Runs in the background."""
     update_upload(assignment_id, upload_id, matching="running", matching_error=None)
     try:
         db = store.load()
@@ -61,7 +61,7 @@ def match_upload(assignment_id: str, upload_id: str, pool) -> None:
         reader = UIDReader(model_path, region, cfg["uid_min_confidence"], cfg["uid_min_margin"])
         reads = reader.read_batch(items)
 
-        roster = {student["uid"]: student for student in rosters.students(pool)}
+        roster = {student["uid"]: student for student in rosters.students(pool, course_id=course_id)}
         taken = {
             s["match"]["student_uid"]
             for other in assignment["uploads"] if other["id"] != upload_id

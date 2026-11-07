@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from app.routing.grading import Service
 from app.grading.exams import resolve_exam
+from app import workflow
 from app.grading.service import amount, token
 
 from app.routing.auth import current_user
@@ -97,6 +98,7 @@ def get_rubric(assignment_id: str, svc: Service):
 def add_question(assignment_id: str, body: QuestionIn, svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
+        workflow.require(conn, exam, ('draft',), 'Adding a question')
         svc.db.add_question(body.qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
         conn.execute("""INSERT INTO mapping(exam_id,uid,qid,status)
             SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
@@ -108,9 +110,12 @@ def add_question(assignment_id: str, body: QuestionIn, svc: Service):
 @router.patch('/questions/{qid}', response_model=Question)
 def update_question(assignment_id: str, qid: str, body: QuestionIn, svc: Service):
     exam = resolve_exam(svc, assignment_id)
-    with svc.access(exam,qid,edit=True):
+    with svc.access(exam,qid,edit=True) as (conn,_):
         if body.qid != qid:
             raise HTTPException(422,'Question ID cannot change; create a new question instead')
+        # Regions locate answers on the scans, so they are fixed once scans are collected.
+        moved = body.region != svc.db.get_rubric(qid,exam_ID=exam)['region']
+        workflow.require(conn,exam,('draft',) if moved else workflow.OPEN,'Moving a region' if moved else 'Editing a question')
         svc.db.edit_question(qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
         return question(svc,exam,qid)
 
@@ -118,7 +123,8 @@ def update_question(assignment_id: str, qid: str, body: QuestionIn, svc: Service
 @router.delete('/questions/{qid}', status_code=204)
 def retire_question(assignment_id: str, qid: str, svc: Service):
     exam = resolve_exam(svc, assignment_id)
-    with svc.access(exam,qid,edit=True):
+    with svc.access(exam,qid,edit=True) as (conn,_):
+        workflow.require(conn,exam,('draft',),'Removing a question')
         svc.db.remove_question(qid,exam_ID=exam)
 
 
@@ -126,6 +132,7 @@ def retire_question(assignment_id: str, qid: str, svc: Service):
 def add_criterion(assignment_id: str,qid: str,body: CriterionIn,svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam,qid,edit=True) as (conn,_):
+        workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
         label = svc.db.add_label(body.title,body.description,amount(body.deduction),exam_ID=exam)
         svc.db.add_rubric_label(qid,label,exam_ID=exam)
         # A new criterion requires review; it must not select itself on old answers.
@@ -136,7 +143,8 @@ def add_criterion(assignment_id: str,qid: str,body: CriterionIn,svc: Service):
 @router.patch('/criteria/{label_id}',response_model=Criterion)
 def update_criterion(assignment_id: str,label_id: int,body: CriterionIn,svc: Service):
     exam = resolve_exam(svc, assignment_id)
-    with svc.access(exam):
+    with svc.access(exam) as (conn,_):
+        workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
         if not svc.db.edit_label(label_id,body.title,body.description,amount(body.deduction),exam_ID=exam):
             raise HTTPException(404,'Criterion not found')
         return criterion(svc.db.get_label(label_id,exam_ID=exam))
@@ -145,6 +153,7 @@ def update_criterion(assignment_id: str,label_id: int,body: CriterionIn,svc: Ser
 @router.delete('/criteria/{label_id}',status_code=204)
 def retire_criterion(assignment_id: str,label_id: int,svc: Service):
     exam = resolve_exam(svc, assignment_id)
-    with svc.access(exam):
+    with svc.access(exam) as (conn,_):
+        workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
         if not svc.db.remove_label(label_id,exam_ID=exam):
             raise HTTPException(404,'Criterion not found')

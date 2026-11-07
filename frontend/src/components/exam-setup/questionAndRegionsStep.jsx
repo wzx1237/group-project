@@ -10,10 +10,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 // renders step 2 of the setup wizard for defining questions and drawing answer regions on blank pdf scans
 export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalExamPoints = 20, onBack, onNext }) {
-  const [questions, setQuestions] = useState(
-    initialQuestions.length > 0 ? initialQuestions : [{ qid: 'Q1', title: '', total_score: 5, region: null }]
-  )
-  const [activeQid, setActiveQid] = useState(initialQuestions[0]?.qid ?? 'Q1')
+  const [questions, setQuestions] = useState(initialQuestions)
+  const [activeQid, setActiveQid] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [numPages, setNumPages] = useState(0)
   const [pageWidth, setPageWidth] = useState(0)
@@ -31,7 +29,8 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
 
   // appends a new question to the exam setup list
   function handleAddQuestion() {
-    const nextNum = questions.length + 1
+    // one past the highest existing number, so removing a question never makes a new one reuse a qid
+    const nextNum = Math.max(0, ...questions.map((q) => Number(q.qid.replace(/\D/g, '')) || 0)) + 1
     const newQ = { qid: `Q${nextNum}`, title: '', total_score: 5, region: null }
     setQuestions((prev) => [...prev, newQ])
     setActiveQid(newQ.qid)
@@ -48,6 +47,12 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
   function handleRemoveQuestion(qid) {
     setQuestions((prev) => prev.filter((q) => q.qid !== qid))
     if (activeQid === qid) setActiveQid(null)
+  }
+
+  // clears a question's region and selects it so the next box drawn replaces it
+  function handleRedrawRegion(qid) {
+    setQuestions((prev) => prev.map((q) => (q.qid === qid ? { ...q, region: null } : q)))
+    setActiveQid(qid)
   }
 
   // captures the finished drawn bounding box and links it to the active question
@@ -225,6 +230,11 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '460px', overflowY: 'auto' }}>
+            {questions.length === 0 && (
+              <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>
+                No questions yet. Click “Add question”, then drag on the exam to draw its region.
+              </p>
+            )}
             {questions.map((q) => {
               const isActive = q.qid === activeQid
               return (
@@ -274,18 +284,18 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
                       }}
                     />
                     <span style={{ fontSize: '11px', color: '#6b7280' }}>pts</span>
-                    {questions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleRemoveQuestion(q.qid)
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '4px' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      aria-label={`Delete ${q.qid}`}
+                      title="Delete question"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRemoveQuestion(q.qid)
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '4px' }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
@@ -295,8 +305,20 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
                       </span>
                     ) : (
                       <span style={{ color: '#b45309' }}>
-                        No region drawn · Click canvas to draw
+                        {isActive ? 'Drag on the exam to draw this region' : 'No region drawn · Select to draw'}
                       </span>
+                    )}
+                    {q.region && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRedrawRegion(q.qid)
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#16756b', fontWeight: 600, fontSize: '11px', cursor: 'pointer', padding: '2px 4px' }}
+                      >
+                        Redraw
+                      </button>
                     )}
                   </div>
                 </div>
@@ -329,7 +351,7 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
           <Button variant="secondary" onClick={onBack}>
             Back
           </Button>
-          <Button onClick={() => onNext(questions)}>
+          <Button disabled={questions.length === 0} onClick={() => onNext(questions)}>
             Continue to rubric →
           </Button>
         </div>

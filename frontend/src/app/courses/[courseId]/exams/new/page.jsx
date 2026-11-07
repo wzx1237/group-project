@@ -8,6 +8,7 @@ import { BlankExamUploadStep } from '@/components/exam-setup/blankExamUploadStep
 import { QuestionAndRegionsStep } from '@/components/exam-setup/questionAndRegionsStep'
 import { InitialRubricSetup } from '@/components/exam-setup/initialRubricSetup'
 import { useCourse } from '@/context/CourseContext'
+import { topLevel } from '@/lib/rubric'
 import * as examsSetupService from '@/services/examsSetupService'
 import styles from './examsetup.module.css'
 
@@ -21,6 +22,7 @@ export default function ExamSetupWizardPage() {
   const [publishError, setPublishError] = useState('')
   const [created, setCreated] = useState(null) // the assignment, once creating it has worked
   const [examData, setExamData] = useState({
+    kind: 'exam',
     title: '',
     totalPoints: '',
     dueDate: '',
@@ -28,7 +30,11 @@ export default function ExamSetupWizardPage() {
     questions: [],
   })
 
-  const saveRubric = useCallback((rubric) => setExamData((prev) => ({ ...prev, rubric })), [])
+  // Step 3 can add, rename, re-point or remove questions, so step 2's list follows it (minus criteria and parts).
+  const saveRubric = useCallback(
+    (rubric) => setExamData((prev) => ({ ...prev, rubric, questions: topLevel(rubric).map(({ criteria, ...q }) => q) })),
+    [],
+  )
 
   // saves step 1 file templates and metadata then advances to step 2
   function handleStep1Next(data) {
@@ -42,6 +48,19 @@ export default function ExamSetupWizardPage() {
     setCurrentStep(3)
   }
 
+  // creates the assignment with no blank exam, questions or rubric; those can be added later
+  async function handleSkipSetup(data) {
+    setPublishError('')
+    try {
+      const exam = created || (await examsSetupService.createExamDraft(courseId, { title: data.title, kind: data.kind, due: data.dueDate }))
+      setCreated(exam)
+      await refresh?.()
+      router.push(`/courses/${courseId}/exams/${exam.id}/upload`)
+    } catch (err) {
+      setPublishError(`Could not create the assignment: ${err.message}`)
+    }
+  }
+
   // Creates the exam, saves its blank PDF (which sets up splitting scans), questions, regions and rubric, then opens
   // its upload page. If a later part fails, the wizard keeps its data so Create exam can be tried again.
   async function handleCreateExam(rubric) {
@@ -50,7 +69,7 @@ export default function ExamSetupWizardPage() {
     let exam = created
     if (!exam) {
       try {
-        exam = await examsSetupService.createExamDraft(courseId, { title: examData.title, due: examData.dueDate })
+        exam = await examsSetupService.createExamDraft(courseId, { title: examData.title, kind: examData.kind, due: examData.dueDate })
       } catch (err) {
         setPublishError(`Could not create the exam: ${err.message}`)
         return
@@ -67,6 +86,15 @@ export default function ExamSetupWizardPage() {
       const reason = err.message.replace(/\.$/, '')
       setPublishError(`“${exam.title}” was created, but saving its setup failed: ${reason}. Your setup is still here, so you can try again.`)
     }
+  }
+
+  if (course && course.role !== 'instructor') {
+    return (
+      <main className={styles.container}>
+        <p className={styles.publishError} role="alert">Only instructors can create exams.</p>
+        <Link href={`/courses/${courseId}`}>Back to course</Link>
+      </main>
+    )
   }
 
   return (
@@ -100,7 +128,7 @@ export default function ExamSetupWizardPage() {
 
       <section className={styles.stepBody}>
         {currentStep === 1 && (
-          <BlankExamUploadStep initialData={examData} onNext={handleStep1Next} />
+          <BlankExamUploadStep initialData={examData} onNext={handleStep1Next} onSkip={handleSkipSetup} />
         )}
 
         {currentStep === 2 && (
@@ -115,10 +143,8 @@ export default function ExamSetupWizardPage() {
 
         {currentStep === 3 && (
           <InitialRubricSetup
-            questions={examData.questions.map((q) => ({
-              ...q,
-              criteria: examData.rubric?.find((r) => r.qid === q.qid)?.criteria,
-            }))}
+            questions={examData.questions}
+            rubric={examData.rubric}
             onChange={saveRubric}
             onBack={() => setCurrentStep(2)}
             onNext={handleCreateExam}

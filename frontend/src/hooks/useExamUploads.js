@@ -77,5 +77,7 @@ export function useExamUploads(examId, onChange) {
     match: change((uploadId) => api.matchUpload(examId, uploadId)),
     assign: change((uploadId, examNumber, uid) => api.assignSubmission(examId, uploadId, examNumber, uid)),
     unassign: change((uploadId, examNumber) => api.unassignSubmission(examId, uploadId, examNumber)),
+    mark: change((uid, status) => api.markStudent(examId, uid, status)),
+    reload,
   }
 }

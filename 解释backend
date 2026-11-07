@@ -1,0 +1,38 @@
+1. slug：
+一个URL/directory的标识，比如我前端传回来一个'assignments/{assignments-id}' (see \routing\assignments.py line 71)
+这里，assignment-id就是我们的slug, 它在此处的作用是处理我们前端返回URL的对接
+又比如说，我现在要把一个东西存在一个directory里面'DATA_DIR/upload/{assignments-id}' (see \routing\distribution.py line 205)
+
+
+given title: Final Exam, 它所对应的slug便是 final-Exam
+如果slug有重复，那么就在后面加-1, -2, -3
+
+2. PDF upload 流程:
+  (1) 在前端传回URL
+  (2) 给到function routing.distribution.upload_pdf()
+  (3) 然后将这个PDF存到我们的path: DATA_DIR/upload/{assignments-id}/{upload_id}.pdf 里面
+  (4) 将这个相关信息(record)存到我们的json file里面，(就是在找哪一个db有我们这个assignments-id)
+  (5) 将这个PDF file送去processing.py去处理, 这里会用到pdf_splitter. pdf_splitter会将大的PDF文件按页数分成小的pdf文件，
+  在保留大的PDF文件不变的情况下，将数据copy给小的文件。并返回小文件们存储的位置(list[dict])
+  (6) 分离完PDF文件之后，会有一个自动的OCR介入，读取UID信息。读好的信息也会存到我们的json file里面
+  (7) 调用/grading/resolve_exam来将json file中的metadata存到我们的SQL里面
+Note: resolve_exam会通过流程：
+grade/page.jsx                -- refresh per 1.5 second
+  → useRubric(examId)
+  → useEffect() → reload()
+  → rubricService.fetchExamRubric(examId)
+  → GET /api/assignments/{examId}/rubric
+  → 后端 rubrics.get_rubric()
+  → resolve_exam()
+  → 将已匹配的扫描件路径同步进 studentpaper
+
+3. Audit trail
+  (1) get_connection会先去找reusable的connnection, 如果没有找到connecion, 就去\database\audit.py里面去找_connection, 创建一个新的connection
+  如果找到了，就去transaction创建一个savepoint. 如果我们的event成功，release这个savepoint; 如果我们的event失败，系统会rollback
+  到这个savepoint上
+  (2) _connection 会先检查audit_outbox是否正常工作再给connection
+  (3) backend得到connection后开始执行SQL语句，这时如果有write操作，会触发003_grading.sql中的trigger, trigger会自动将
+  old verion, new version存下来
+  (4) return connection时，get_connection里面的_flush_audit_safely会触发，检查我的audit_outbox里面是不是有存了500条记录
+  如果有，就把这些记录送去flush_audit转换成json, 然后再audit_box里面删掉它们，进一步再_write_audit_rows里面存下来我们的json
+  

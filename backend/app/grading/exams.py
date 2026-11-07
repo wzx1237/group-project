@@ -17,7 +17,7 @@ def resolve_exam(svc, assignment_id: str) -> int:
     if assignment_id.isdigit():
         return int(assignment_id)
     stored = next((a for a in store.load()['assignments'] if a['id'] == assignment_id),
-                  {'id': assignment_id, 'uploads': [], 'statuses': {}})
+                  {'id': assignment_id, 'uploads': []})
     scans = _scans(stored)
     with svc.db.audit_context(actor_ID=svc.actor), svc.db.transaction():
         with svc.db.get_connection() as conn:

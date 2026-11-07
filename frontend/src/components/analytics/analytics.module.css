@@ -94,6 +94,68 @@
   text-align: center;
 }
 
+/* performance by question */
+
+.questionList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.questionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr) 44px;
+  grid-template-areas:
+    'name bar percent'
+    'meta bar percent';
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 2px;
+}
+
+.questionName {
+  grid-area: name;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.questionMeta {
+  grid-area: meta;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bar {
+  grid-area: bar;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.percent {
+  grid-area: percent;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  text-align: right;
+}
+
 .srOnly {
   position: absolute;
   width: 1px;
@@ -106,5 +168,14 @@
 @media (max-width: 720px) {
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .questionRow {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-areas:
+      'name percent'
+      'bar bar'
+      'meta meta';
+    row-gap: 6px;
   }
 }

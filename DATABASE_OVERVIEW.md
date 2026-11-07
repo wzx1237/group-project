@@ -21,6 +21,12 @@ The schema is built by numbered migrations in `backend/app/migrations/`. `db.py`
 | `004_rubric_scoring.sql` | `rubric.scoring` column (`add` or `deduct`) |
 | `005_exam_slug.sql` | `exam.slug` column and a unique `(course_id, slug)` constraint |
 | `006_assignment.sql` | Renames `exam` to `assignment`; adds `kind` and `short`; makes `slug` NOT NULL |
+| `007_assignment_release.sql` | `assignment.released_at` column |
+| `008_unique_assignment_slug.sql` | Makes `assignment.slug` unique across all courses |
+| `009_assignment_total_points.sql` | `assignment.total_points` column (nullable, 0 or more) |
+| `009_enrollment_section.sql` | `enrollment.section` and `enrollment.status` columns |
+| `010_assignment_status.sql` | `assignment.status` column (workflow status), backfilled from existing data |
+| `011_assignment_student.sql` | `assignment_student` (per-student status per assignment), the `gradable_question` and `assignment_student_progress` views, plus audit triggers |
 
 ### How it is organized
 
@@ -39,6 +45,8 @@ erDiagram
     course ||--o{ assignment : "has"
     assignment ||--o{ studentpaper : "has scans"
     student ||--o{ studentpaper : "submits"
+    assignment ||--o{ assignment_student : "tracks"
+    student ||--o{ assignment_student : "status for"
     assignment ||--o{ rubric : "has questions"
     assignment ||--o{ label : "has labels"
     rubric ||--o{ rubric_label : "offers"
@@ -87,6 +95,7 @@ erDiagram
         text slug
         text kind
         text short
+        numeric total_points
     }
     studentpaper {
         int exam_id PK,FK
@@ -293,6 +302,9 @@ Anything that gets graded: an exam, quiz, homework and so on. It was called `exa
 | `slug` | TEXT | NN | Added in 005, NOT NULL since 006. Links to the assignment `id` in the JSON files. `UNIQUE (course_id, slug)` |
 | `kind` | TEXT | NN | Added in 006. One of `exam`, `final exam`, `homework`, `lab`, `quiz`, `essay`, `other`. Default `exam` |
 | `short` | TEXT | | Added in 006. Short label such as `Q1`. When NULL, callers fall back to `slug` |
+| `released_at` | TIMESTAMPTZ | | Added in 007. When the assignment was closed (grades released to students). NULL while it is open |
+| `total_points` | NUMERIC(6,2) | | Added in 009. NULL when not set |
+| `status` | TEXT | NN | Added in 010. `draft`, `collecting`, `grading`, `in_review` or `closed`. Default `draft`. See "Assignment workflow" below |
 
 ```
 ┌─────────┬───────────┬───────────┬────────────┬───────────┬────────────────┬────────┬──────┬───────┐
@@ -300,6 +312,52 @@ Anything that gets graded: an exam, quiz, homework and so on. It was called `exa
 ├─────────┼───────────┼───────────┼────────────┼───────────┼────────────────┼────────┼──────┼───────┤
 │ 1       │ 1         │ Quiz 1    │ 2026-09-16 │ NULL      │ NULL           │ quiz-1 │ quiz │ Q1    │
 └─────────┴───────────┴───────────┴────────────┴───────────┴────────────────┴────────┴──────┴───────┘
+```
+
+#### Assignment workflow
+
+| Status | Owner | Meaning |
+|---|---|---|
+| `draft` | Instructor | Created; blank exam, regions and rubric being set up |
+| `collecting` | TAs | Scans are uploaded, split and matched |
+| `grading` | TAs | Graders are working through questions |
+| `in_review` | Instructor | Grading done; instructor can fix or regrade |
+| `closed` | Instructor | Locked; grades released to students. `released_at` is set |
+
+The CHECK only limits the values. `backend/app/workflow.py::change_status` holds the rules, checked under a lock on the assignment row:
+
+- `draft → collecting` (instructor): needs a blank exam, a question with a region, and at least one criterion on every gradable question. Adds a `missing` row in `assignment_student` for each enrolled student.
+- `collecting → grading` (instructor or TA): no student is `missing` or `needs_review`, and no scan is waiting to be matched.
+- `grading → in_review` (instructor or TA): every enrolled student who isn't excused is graded.
+- `in_review → closed` (instructor): every enrolled student is graded (no-shows count as 0; excused students block closing).
+- Any move back (instructor only) needs confirmation. Leaving `closed` clears `released_at`.
+
+Uploads and matching are only allowed while `collecting`; grading only while `grading` or `in_review`; nothing changes once `closed`.
+
+#### `assignment_student`
+One row per enrolled student per assignment, from the moment the assignment leaves `draft`. Added in 011. It is a separate table, not a `studentpaper` column, because `studentpaper.scanned_pdf` is NOT NULL and every paper gets `mapping` rows: a student with no scan would land in grading queues.
+
+| Column | Type | Key | Notes |
+|---|---|---|---|
+| `exam_id` | INT | **PK**, FK → `assignment` | Cascades on delete |
+| `uid` | TEXT | **PK**, FK → `student` | Cascades on delete |
+| `status` | TEXT | NN | `missing`, `needs_review`, `matched`, `excused` or `no_show`. Default `missing` |
+| `set_by` | TEXT | FK → `staff` | Who set it. NULL when automatic matching set it |
+| `set_at` | TIMESTAMPTZ | NN | When it was set |
+| `note` | TEXT | | Optional, for example why a student is excused |
+
+A student is *resolved* when `matched`, `excused` or `no_show`. `needs_review` means a scan was read as this student but nobody has confirmed it. An excused student becomes `matched` when their makeup scan is matched. "Graded" is not stored: the `assignment_student_progress` view works it out from `mapping.status = 'Finished'` on every gradable question (a question with parts such as `2.a` is graded through its parts; the `gradable_question` view lists those). A no-show counts as graded with 0 points. The view also has `enrolled`, false once a student is dropped.
+
+`matched` and `needs_review` are copied from the matching state in `data/db.json` by `workflow.sync_from_store`, after each upload, match, assign and unassign and once at startup. `excused` and `no_show` exist only in SQL. See Part 3 for the drift this allows.
+
+```
+┌─────────┬───────────┬──────────┬─────────┬────────────────────────┬────────────────┐
+│ exam_id │ uid       │ status   │ set_by  │ set_at                 │ note           │
+├─────────┼───────────┼──────────┼─────────┼────────────────────────┼────────────────┤
+│ 1       │ 123456789 │ matched  │ NULL    │ 2026-09-17 09:12:00+00 │ NULL           │
+│ 1       │ 987654321 │ excused  │ jdoe    │ 2026-09-17 10:40:00+00 │ makeup Friday  │
+│ 1       │ 555555555 │ no_show  │ jdoe    │ 2026-09-18 08:00:00+00 │ NULL           │
+└─────────┴───────────┴──────────┴─────────┴────────────────────────┴────────────────┘
 ```
 
 #### `studentpaper`
@@ -506,7 +564,7 @@ It is managed by `backend/app/store.py`. It has one course with a list of assign
   - `submissions[]`: the individual exams split out of that PDF.
     - `id`, `filename`, `uid_image`.
     - `match`: `{state, student_uid, ...}`, where state is `matched`, `assigned`, or waiting for a TA.
-- `statuses{}`: per-student grading status (`grading`, `graded`) that overrides "submitted".
+- `statuses{}`: no longer read. Student status lives in the SQL `assignment_student` table and grading progress in `mapping`.
 
 The file is read and rewritten whole under an in-process thread lock with an atomic file replace.
 
@@ -537,7 +595,7 @@ Per-assignment layout for the cover-page detector: a reference PDF, anchor recta
 | **Assignment / exam** | `exam (exam_name, due, slug)` | `config.json → assignments[]` and `db.json → assignments[]` | The same assignment lives in three places. The `slug` column links `exam.slug` to the assignment `id`. |
 | **Student ↔ exam paper** | `studentpaper (exam_id, uid, scanned_pdf)` | `db.json → uploads[].submissions[].match` | Matching writes only to `db.json`. When grading first opens an exam, `grading/exams.py::resolve_exam` copies the matched scans into `studentpaper`. |
 | **Scan file location** | `studentpaper.scanned_pdf` | `data/submissions/…` on disk and `db.json` | SQL stores only a path, copied from `db.json`. |
-| **Grading status** | `mapping.status` and the existence of `decision` rows | `db.json → statuses{}` | Two ways of saying whether a student is submitted, grading or graded. They are not synced automatically. |
+| **Student status** | `assignment_student.status` | `db.json → uploads[].submissions[].match` | `matched` and `needs_review` are copied from `db.json` into SQL by `workflow.sync_from_store`; `excused` and `no_show` exist only in SQL. Graded is derived from `mapping`. |
 | **Rosters** | `student`, `enrollment`, `staff`, `course_staff` | `data/rosters/*.csv` | The CSVs are seed input only. The app reads rosters from SQL at runtime, so this is a one-way import and not a real duplicate. |
 
 ### Why the overlap is a problem
@@ -546,6 +604,7 @@ Per-assignment layout for the cover-page detector: a reference PDF, anchor recta
 - **No cross-store transactions.** Upload and matching updates go to `db.json`, while grading goes to Postgres. A failure partway through `resolve_exam` can leave them out of step.
 - **Matching changes can be lost.** If a student is unassigned after `studentpaper` is created, the paper row stays (by design, to keep saved grades) while `db.json` forgets the match.
 - **Single-process only.** The `db.json` lock is an in-process `threading.Lock`. Two backend workers would race and could overwrite each other's writes. Postgres has no such problem.
+- **Student status can lag the matching state.** Matching writes `db.json` first and then syncs `assignment_student` in a separate step. If that SQL write fails, the two disagree until the next sync (the next upload, match, assign or unassign for the assignment, or a restart). Workflow checks read SQL, so a lag can only block a move, not let an unmatched student through, because "Start grading" also checks `db.json` for scans waiting to be matched.
 - **No audit trail for uploads.** Triggers only audit SQL tables. Upload, matching and status changes in `db.json` are not captured.
 - **Relational integrity is missing for uploads.** `db.json` references students by `uid` with no foreign key, so it can point at students who no longer exist.
 

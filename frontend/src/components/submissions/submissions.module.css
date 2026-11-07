@@ -451,6 +451,16 @@
   border-top: 1px solid var(--border);
 }
 
+.missingRow {
+  align-items: center;
+}
+
+.missingActions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
 @media (max-width: 720px) {
   .examRow {
     grid-template-columns: minmax(0, 1fr);

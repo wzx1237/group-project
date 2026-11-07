@@ -11,7 +11,7 @@ import { QuestionEditorForm } from './questionEditorForm'
 import styles from './rubricPanel.module.css'
 
 export function QuestionRubricCard(props) {
-  const { question, label, parts = [], isPart = false, collapsed, onToggle, actions, grading } = props
+  const { question, label, parts = [], isPart = false, allowSubquestions = true, collapsed, onToggle, actions, grading } = props
   const { editor, onOpenEditor, onCloseEditor } = props
   const qid = question.qid
   // Which of this question's editors is open, if any: its question form, one criterion, a new criterion or subquestion.
@@ -76,7 +76,7 @@ export function QuestionRubricCard(props) {
                   Criterion
                 </Button>
               )}
-              {!isPart && (
+              {!isPart && allowSubquestions && (
                 <Button size="sm" onClick={() => onOpenEditor(`new-part:${qid}`)}>
                   <Plus {...icon} />
                   Subquestion

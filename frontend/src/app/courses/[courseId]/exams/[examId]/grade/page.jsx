@@ -67,6 +67,7 @@ function GradingWorkspace() {
             <PdfCanvasViewer
               url={submissionUrl(examId, student.submission.upload_id, student.submission.submission_id)}
               filename={scan?.filename ?? `${student.name}'s exam`}
+              questions={questions}
             />
           ) : (
             <p className={styles.empty}>{students ? 'No submission selected' : 'Loading submissions…'}</p>
@@ -75,6 +76,7 @@ function GradingWorkspace() {
         {rubric ? (
           <RubricPanel
             className={styles.rubric}
+            allowSubquestions={false}
             questions={questions}
             submissionCount={students?.length ?? 0}
             actions={actions}

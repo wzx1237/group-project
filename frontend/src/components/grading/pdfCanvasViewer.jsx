@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
+import { parentQid, partsOf } from '@/lib/rubric'
 import { PageThumbnail } from './PageThumbnail'
 import { PdfToolbar } from './pdfToolbar'
 import styles from './pdfCanvasViewer.module.css'
@@ -12,7 +13,18 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 const PAGE_WIDTH = 650
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
-export function PdfCanvasViewer({ url, filename }) {
+const sameRegion = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+// Subquestions start with their question's region, so a shared region is outlined once, as the question; a part is
+// outlined on its own only once its region differs, and then the question isn't.
+function outlined(questions, question) {
+  const parent = parentQid(question.qid)
+  if (parent) return !sameRegion(question.region, questions.find((q) => q.qid === parent)?.region)
+  return !partsOf(questions, question.qid).some((part) => part.region && !sameRegion(part.region, question.region))
+}
+
+// `questions` with a region ({ page, x, y, width, height } as fractions of the page) are outlined on that page
+export function PdfCanvasViewer({ url, filename, questions = [] }) {
   const viewerRef = useRef(null)
   const stageRef = useRef(null)
   const pageRefs = useRef([])
@@ -82,6 +94,22 @@ export function PdfCanvasViewer({ url, filename }) {
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
+              {questions
+                .filter((q) => q.region?.page === n && outlined(questions, q))
+                .map(({ qid, title, region }) => (
+                  <div
+                    key={qid}
+                    className={styles.region}
+                    style={{
+                      left: `${region.x * 100}%`,
+                      top: `${region.y * 100}%`,
+                      width: `${region.width * 100}%`,
+                      height: `${region.height * 100}%`,
+                    }}
+                  >
+                    <span className={styles.regionTag}>{title ? `${qid} · ${title}` : qid}</span>
+                  </div>
+                ))}
             </div>
           ))}
         </div>

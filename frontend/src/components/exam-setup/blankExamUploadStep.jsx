@@ -5,12 +5,26 @@ import { FileCheck, FileText, UploadCloud } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 // renders step 1 of the exam setup wizard for uploading templates and exam metadata
-export function BlankExamUploadStep({ initialData = {}, onNext }) {
+const KINDS = ['exam', 'final exam', 'homework', 'lab', 'quiz', 'essay', 'other']
+const kindLabel = (k) => k.replace(/\b\w/g, (c) => c.toUpperCase())
+
+// pdfLocked: the blank exam can't be replaced (the assignment is past draft); nextLabel names the step Continue goes to
+export function BlankExamUploadStep({
+  initialData = {},
+  onNext,
+  onSkip,
+  skipLabel = 'Skip blank exam & rubric',
+  requirePdf = true,
+  pdfLocked = false,
+  nextLabel = 'Questions and Regions',
+}) {
+  const [kind, setKind] = useState(initialData.kind || 'exam')
   const [title, setTitle] = useState(initialData.title || '')
   const [totalPoints, setTotalPoints] = useState(initialData.totalPoints || '')
   const [dueDate, setDueDate] = useState(initialData.dueDate || '')
   const [blankPdf, setBlankPdf] = useState(initialData.blankPdf || null)
   const [error, setError] = useState('')
+  const [skipping, setSkipping] = useState(false)
 
   // handles the selection of the blank exam template pdf file
   function handleBlankPdfChange(event) {
@@ -22,21 +36,31 @@ export function BlankExamUploadStep({ initialData = {}, onNext }) {
   function handleSubmit(event) {
     event.preventDefault()
     if (!title.trim()) {
-      return setError('please enter an exam title')
+      return setError('please enter a title')
     }
     if (!totalPoints || Number(totalPoints) <= 0) {
       return setError('please enter a valid total points value')
     }
-    if (!blankPdf) {
+    if (requirePdf && !blankPdf) {
       return setError('please upload the blank exam pdf; its cover page is how scans get split into one exam per student')
     }
     setError('')
     onNext({
+      kind,
       title: title.trim(),
       totalPoints: Number(totalPoints),
       dueDate,
       blankPdf,
     })
+  }
+
+  // creates the assignment from just its type, title and due date, without a blank exam or rubric
+  async function handleSkip() {
+    if (!title.trim()) return setError('please enter a title')
+    setError('')
+    setSkipping(true)
+    await onSkip({ kind, title: title.trim(), dueDate, blankPdf })
+    setSkipping(false)
   }
 
   return (
@@ -56,10 +80,24 @@ export function BlankExamUploadStep({ initialData = {}, onNext }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', gap: '16px' }}>
         <div>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
-            Exam Title
+            Assignment Type
+          </label>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #dfe5e5', fontSize: '13px', background: '#ffffff' }}
+          >
+            {KINDS.map((k) => (
+              <option key={k} value={k}>{kindLabel(k)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+            Title
           </label>
           <input
             type="text"
@@ -107,12 +145,9 @@ export function BlankExamUploadStep({ initialData = {}, onNext }) {
       >
         <UploadCloud size={32} color="#16756b" style={{ margin: '0 auto 12px' }} />
         <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#202c30', margin: '0 0 4px' }}>
-          Blank Exam Template (PDF)
+          Blank Exam Template 
         </h3>
-        <p style={{ fontSize: '12px', color: '#6b7280', margin: '0 0 16px' }}>
-          Master PDF scan used to draw question answer regions.
-        </p>
-        <label style={{ cursor: 'pointer' }}>
+        <label style={{ cursor: pdfLocked ? 'not-allowed' : 'pointer', opacity: pdfLocked ? 0.6 : 1 }}>
           <span
             style={{
               display: 'inline-flex',
@@ -127,15 +162,24 @@ export function BlankExamUploadStep({ initialData = {}, onNext }) {
             }}
           >
             {blankPdf ? <FileCheck size={15} /> : <FileText size={15} />}
-            {blankPdf ? blankPdf.name : 'Browse Blank PDF'}
+            {blankPdf ? blankPdf.name : 'Upload PDF'}
           </span>
-          <input type="file" accept="application/pdf" onChange={handleBlankPdfChange} style={{ display: 'none' }} />
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handleBlankPdfChange}
+            disabled={pdfLocked}
+            style={{ display: 'none' }}
+          />
         </label>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+        <Button variant="secondary" onClick={handleSkip} disabled={skipping}>
+          {skipping ? 'Saving…' : skipLabel}
+        </Button>
         <Button type="submit">
-          Continue to Questions and Regions →
+          Continue to {nextLabel} →
         </Button>
       </div>
     </form>

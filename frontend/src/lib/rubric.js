@@ -6,6 +6,13 @@ export const partsOf = (questions, qid) => questions.filter((q) => parentQid(q.q
 
 export const partLabel = (label, index) => `${label}(${String.fromCharCode(97 + index)})`
 
+// The next free ID: Q1, Q2, ... for questions and Q1.1, Q1.2 for the parts of Q1, as in the proposal.
+export function nextQid(questions, parent = null) {
+  const used = questions.filter((q) => parentQid(q.qid) === parent).map((q) => Number(q.qid.split(/[Q.]/).pop()))
+  const n = Math.max(0, ...used) + 1
+  return parent ? `${parent}.${n}` : `Q${n}`
+}
+
 // A question with subquestions is worth what its subquestions add up to.
 export const questionPoints = (question, parts) =>
   parts.length ? parts.reduce((sum, part) => sum + part.total_score, 0) : question.total_score
@@ -29,7 +36,7 @@ export function scoreWith(question, adjustment) {
   return Math.round(Math.min(Math.max(start + adjustment, 0), question.total_score) * 100) / 100
 }
 
-const questionScore = (question, decision) =>
+export const questionScore = (question, decision) =>
   scoreWith(question, total(appliedCriteria(question, decision), (c) => c.deduction))
 
 export function gradingProgress(questions, decisions) {

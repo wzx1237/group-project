@@ -1,227 +1,122 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { FileText, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { RubricPanel } from '@/components/grading/rubricPanel'
+import { nextQid, parentQid, partsOf } from '@/lib/rubric'
+import styles from './initialRubricSetup.module.css'
 
-// renders step 3 of the exam setup wizard for initial rubric criteria creation and markdown imports
-export function InitialRubricSetup({ questions = [], onBack, onNext, onChange }) {
-  const [rubricQuestions, setRubricQuestions] = useState(
-    questions.map((q) => ({
-      ...q,
-      criteria: q.criteria || [
-        { label_id: `${q.qid}-1`, title: 'Correct working and method', deduction: q.total_score, description: 'Full credit' },
-        { label_id: `${q.qid}-2`, title: 'Minor algebraic error', deduction: -1, description: 'Deduct 1 point' },
-      ],
-    }))
-  )
-  const [activeQid, setActiveQid] = useState(questions[0]?.qid || 'Q1')
+// Criteria made here have no database ID yet; saving treats any non-numeric ID as new. Random rather than a counter,
+// which a hot reload resets while the wizard keeps its criteria (crypto.randomUUID needs https).
+const localId = () => `new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
+// Every question starts with a full-credit and a no-credit criterion, so a typical answer is one click to grade.
+function defaultCriteria(points, scoring) {
+  const full = scoring === 'deduct' ? 0 : points
+  const none = scoring === 'deduct' ? -points : 0
+  return [
+    { label_id: localId(), title: 'Correct', description: '', deduction: full },
+    { label_id: localId(), title: 'Blank or Incorrect', description: '', deduction: none },
+  ]
+}
+
+// Step 2's questions (titles, points, regions) with what an earlier visit to this step added: criteria, scoring
+// and subquestions. Subquestions of questions removed in step 2 are dropped.
+function startingRubric(questions, rubric = []) {
+  const saved = new Map(rubric.map((q) => [q.qid, q]))
+  const top = questions.map((q) => {
+    const earlier = saved.get(q.qid)
+    const scoring = earlier?.scoring ?? q.scoring ?? 'add'
+    const criteria = earlier?.criteria ?? q.criteria ?? defaultCriteria(Number(q.total_score) || 0, scoring)
+    return { ...earlier, ...q, scoring, criteria }
+  })
+  const kept = new Set(top.map((q) => q.qid))
+  return [...top, ...rubric.filter((q) => kept.has(parentQid(q.qid)))]
+}
+
+// Step 3 of exam setup: the same rubric editor as the grading page, kept in memory until the exam is saved
+export function InitialRubricSetup({
+  questions = [],
+  rubric,
+  onBack,
+  onNext,
+  onChange,
+  submitLabel = 'Create exam',
+  submittingLabel = 'Creating exam…',
+}) {
+  const [items, setItems] = useState(() => startingRubric(questions, rubric))
   const [creating, setCreating] = useState(false)
 
   // the wizard keeps the rubric, so going back to an earlier step doesn't lose it
   useEffect(() => {
-    onChange?.(rubricQuestions)
-  }, [rubricQuestions, onChange])
+    onChange?.(items)
+  }, [items, onChange])
 
   async function create() {
     setCreating(true)
-    await onNext(rubricQuestions)
+    await onNext(items)
     setCreating(false)
   }
 
-  // appends a new rubric criterion deduction to the selected question
-  function handleAddCriterion(qid) {
-    setRubricQuestions((prev) =>
-      prev.map((q) => {
-        if (q.qid !== qid) return q
-        const nextId = `${qid}-${q.criteria.length + 1}`
-        return {
-          ...q,
-          criteria: [...q.criteria, { label_id: nextId, title: '', deduction: -1, description: '' }],
-        }
-      })
-    )
-  }
+  const update = (qid, change) => setItems((prev) => prev.map((q) => (q.qid === qid ? change(q) : q)))
 
-  // updates a criterion title or deduction points
-  function handleUpdateCriterion(qid, labelId, field, value) {
-    setRubricQuestions((prev) =>
-      prev.map((q) => {
-        if (q.qid !== qid) return q
-        return {
-          ...q,
-          criteria: q.criteria.map((c) =>
-            c.label_id === labelId ? { ...c, [field]: value } : c
-          ),
+  // Same signatures as useRubric's actions, so RubricPanel works unchanged. Each resolves to whether it worked.
+  const actions = {
+    async addQuestion({ parent_qid: parent = null, ...body }) {
+      setItems((prev) => {
+        const parentQuestion = parent && prev.find((q) => q.qid === parent)
+        // A question's first subquestion takes over the criteria it already had, and every part is answered inside
+        // its question's region.
+        const inherited = parentQuestion && !partsOf(prev, parent).length ? parentQuestion.criteria : []
+        const question = {
+          ...body,
+          qid: nextQid(prev, parent),
+          region: parentQuestion?.region ?? null,
+          criteria: inherited.length ? inherited : defaultCriteria(body.total_score, body.scoring),
         }
+        return [...prev.map((q) => (q.qid === parent ? { ...q, criteria: [] } : q)), question]
       })
-    )
+      return true
+    },
+    async updateQuestion(qid, body) {
+      update(qid, (q) => ({ ...q, ...body }))
+      return true
+    },
+    async removeQuestion(qid) {
+      setItems((prev) => prev.filter((q) => q.qid !== qid && parentQid(q.qid) !== qid))
+      return true
+    },
+    async addCriterion(qid, body) {
+      update(qid, (q) => ({ ...q, criteria: [...q.criteria, { ...body, label_id: localId() }] }))
+      return true
+    },
+    async updateCriterion(qid, labelId, body) {
+      update(qid, (q) => ({ ...q, criteria: q.criteria.map((c) => (c.label_id === labelId ? { ...c, ...body } : c)) }))
+      return true
+    },
+    async removeCriterion(qid, labelId) {
+      update(qid, (q) => ({ ...q, criteria: q.criteria.filter((c) => c.label_id !== labelId) }))
+      return true
+    },
   }
-
-  // removes a criterion from a question rubric
-  function handleRemoveCriterion(qid, labelId) {
-    setRubricQuestions((prev) =>
-      prev.map((q) => {
-        if (q.qid !== qid) return q
-        return {
-          ...q,
-          criteria: q.criteria.filter((c) => c.label_id !== labelId),
-        }
-      })
-    )
-  }
-
-  const activeQuestion = rubricQuestions.find((q) => q.qid === activeQid) || rubricQuestions[0]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#202c30', margin: 0 }}>
-            3. Setup Initial Rubrics
-          </h2>
-          <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
-            Define initial criteria and deductions. Rubrics can also be modified dynamically during active grading.
-          </p>
-        </div>
+    <div className={styles.step}>
+      <div>
+        <h2 className={styles.title}>3. Set up the rubric</h2>
+        <p className={styles.subtitle}>
+          Add criteria and subquestions the same way as during grading. Nothing is saved until you {submitLabel.toLowerCase()}.
+        </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px', minHeight: '400px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {rubricQuestions.map((q) => (
-            <button
-              key={q.qid}
-              type="button"
-              onClick={() => setActiveQid(q.qid)}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                border: `1px solid ${q.qid === activeQid ? '#16756b' : '#dfe5e5'}`,
-                background: q.qid === activeQid ? '#f7faf9' : '#ffffff',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '13px', color: '#202c30' }}>
-                  {q.qid} · {q.title || 'Question'}
-                </div>
-                <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                  {q.criteria.length} criteria defined
-                </div>
-              </div>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#16756b' }}>
-                {q.total_score} pts
-              </span>
-            </button>
-          ))}
-        </div>
+      <RubricPanel className={styles.panel} questions={items} actions={actions} />
 
-        {activeQuestion && (
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #dfe5e5',
-              borderRadius: '8px',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#202c30', margin: 0 }}>
-                {activeQuestion.qid} · {activeQuestion.title || 'Question'} Rubric ({activeQuestion.total_score} pts)
-              </h3>
-              <Button size="sm" variant="secondary" onClick={() => handleAddCriterion(activeQuestion.qid)}>
-                <Plus size={13} /> Add criterion
-              </Button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {activeQuestion.criteria.map((criterion) => (
-                <div
-                  key={criterion.label_id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '10px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #dfe5e5',
-                    background: '#fafcfc',
-                  }}
-                >
-                  <input
-                    type="number"
-                    value={criterion.deduction}
-                    onChange={(e) =>
-                      handleUpdateCriterion(activeQuestion.qid, criterion.label_id, 'deduction', Number(e.target.value))
-                    }
-                    style={{
-                      width: '60px',
-                      padding: '6px 8px',
-                      borderRadius: '4px',
-                      border: '1px solid #dfe5e5',
-                      fontSize: '12px',
-                      textAlign: 'center',
-                      fontWeight: 600,
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Criterion title visible to students"
-                    value={criterion.title}
-                    onChange={(e) =>
-                      handleUpdateCriterion(activeQuestion.qid, criterion.label_id, 'title', e.target.value)
-                    }
-                    style={{
-                      flex: 1,
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #dfe5e5',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Grader internal note"
-                    value={criterion.description}
-                    onChange={(e) =>
-                      handleUpdateCriterion(activeQuestion.qid, criterion.label_id, 'description', e.target.value)
-                    }
-                    style={{
-                      flex: 1,
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #dfe5e5',
-                      fontSize: '12px',
-                    }}
-                  />
-                  {activeQuestion.criteria.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCriterion(activeQuestion.qid, criterion.label_id)}
-                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '4px' }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+      <div className={styles.actions}>
         <Button variant="secondary" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={create} disabled={creating}>
-          {creating ? 'Creating exam…' : 'Create exam'}
+        <Button variant="primary" onClick={create} disabled={creating}>
+          {creating ? submittingLabel : submitLabel}
         </Button>
       </div>
     </div>

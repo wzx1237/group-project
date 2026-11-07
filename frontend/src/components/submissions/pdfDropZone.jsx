@@ -48,7 +48,6 @@ export function PdfDropZone({ onUploadFiles, uploading, disabled }) {
         <UploadCloud size={20} strokeWidth={1.6} aria-hidden />
       </span>
       <p className={styles.dropTitle}>Drag scanned exam PDFs here</p>
-      <p className={styles.dropHint}>One combined scan of the class, or a single late exam</p>
       <Button size="sm" onClick={() => input.current.click()} disabled={disabled}>
         <FolderOpen size={13} strokeWidth={1.6} aria-hidden /> Browse files
       </Button>

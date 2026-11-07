@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useCourse } from '@/context/CourseContext'
 import { useAuth } from '@/hooks/useAuth'
-import { getStaff } from '@/exam-distribution/lib/api'
+import { getCourseStaff } from '@/exam-distribution/lib/api'
 import styles from './StaffRosterPage.module.css'
 
 // derives two-letter initials from full name or directory id
@@ -36,11 +36,13 @@ export default function StaffRosterPage() {
   const [error, setError] = useState('')
   const [newTaInput, setNewTaInput] = useState('')
 
+  const courseId = course?.id
   useEffect(() => {
-    getStaff()
+    if (courseId == null) return
+    getCourseStaff(courseId)
       .then((data) => setStaff(data.map(toMember)))
       .catch((err) => setError(err.message))
-  }, [])
+  }, [courseId])
 
   // professors first, then TAs, each by name
   const members = [...(staff ?? [])].sort(

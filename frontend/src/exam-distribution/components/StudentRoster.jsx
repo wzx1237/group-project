@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getStudents } from '../lib/api.js'
-import { STATUSES } from '../lib/status.js'
+import { studentLabel, studentState } from '../lib/status.js'
 import StatusKey from './StatusKey.jsx'
 
 export default function StudentRoster({ course, assignments }) {
@@ -24,7 +24,7 @@ export default function StudentRoster({ course, assignments }) {
       </Link>
       <h1>Student Roster</h1>
       <p className="sub">{students.length} students</p>
-      <StatusKey blankLabel="Not known yet" />
+      <StatusKey blankLabel="Assignment still in draft" />
       <ul className="student-list">
         {students.map((student) => (
           <li key={student.uid} className="student">
@@ -36,11 +36,10 @@ export default function StudentRoster({ course, assignments }) {
             </div>
             <div className="boxes">
               {assignments.map((a) => {
-                const status = student.progress[a.id]
-                const label = STATUSES.find((s) => s.id === status)?.label ?? 'Nothing uploaded yet'
+                const entry = student.progress[a.id]
                 return (
-                  <div key={a.id} className="cell" title={`${a.title}: ${label}`}>
-                    <span className={`box ${status || ''}`} />
+                  <div key={a.id} className="cell" title={`${a.title}: ${studentLabel(entry) || 'Still in draft'}`}>
+                    <span className={`box ${studentState(entry)}`} />
                     <span className="cell-label">{a.short}</span>
                   </div>
                 )

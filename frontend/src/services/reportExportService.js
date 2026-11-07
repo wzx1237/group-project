@@ -1,4 +1,5 @@
-// Grade release and student reports, through backend/app/routing/reports.py.
+// Student reports and grade exports, through backend/app/routing/reports.py.
+// Grades are released by closing the assignment (changeStatus in exam-distribution/lib/api).
 
 import { getAssignmentRoster } from '@/exam-distribution/lib/api'
 import { gradingProgress, rubricPoints } from '@/lib/rubric'
@@ -13,16 +14,8 @@ export const reportUrl = (examId, uid, download = false) =>
 export const reportsZipUrl = (examId) => `${files(examId)}/reports.zip`
 export const gradesCsvUrl = (examId) => `${files(examId)}/grades.csv`
 
-export const fetchReleaseStatus = (examId) => request(`/assignments/${examId}/release`)
-
-export const setGradesReleased = (examId, released) =>
-  request(`/assignments/${examId}/release`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ released }),
-  })
-
 // Every student on the roster with their exam's score, added up the way the grading page does.
+// Whether they are graded comes from the server's stored status; a no-show is graded with 0.
 export async function fetchStudentScores(examId) {
   const [rubric, decisions, roster] = await Promise.all([
     fetchExamRubric(examId),
@@ -32,15 +25,18 @@ export async function fetchStudentScores(examId) {
   const possible = rubricPoints(rubric.questions)
   return roster.students.map((s) => {
     const progress = gradingProgress(rubric.questions, decisions[s.uid] ?? {})
+    const noShow = s.status === 'no_show'
     return {
       uid: s.uid,
       name: s.name,
+      status: s.status, // null while the assignment is in draft
       hasExam: Boolean(s.submission),
-      earned: progress.earned,
+      noShow,
+      earned: noShow ? 0 : progress.earned,
       possible,
-      gradedCount: progress.gradedCount,
-      questionCount: progress.questionCount,
-      graded: progress.questionCount > 0 && progress.gradedCount === progress.questionCount,
+      gradedCount: s.progress?.finished ?? progress.gradedCount,
+      questionCount: s.progress?.questions ?? progress.questionCount,
+      graded: Boolean(s.progress?.graded),
     }
   })
 }

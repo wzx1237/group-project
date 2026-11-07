@@ -11,6 +11,9 @@
   --grading: #f2c94c;
   --graded: #3aa76d;
   --missing: #d9534f;
+  --needs_review: #e8893a;
+  --excused: #5b8def;
+  --no_show: #6b6b6b;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -66,6 +69,10 @@ a { color: inherit; }
 .box.grading { background: var(--grading); border-color: var(--grading); }
 .box.graded { background: var(--graded); border-color: var(--graded); }
 .box.missing { background: var(--missing); border-color: var(--missing); }
+.box.matched { background: var(--submitted); border-color: var(--submitted); }
+.box.needs_review { background: var(--needs_review); border-color: var(--needs_review); }
+.box.excused { background: var(--excused); border-color: var(--excused); }
+.box.no_show { background: var(--no_show); border-color: var(--no_show); }
 .key { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0 0; padding: 12px 16px; list-style: none; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 0.9rem; }
 .key .box { width: 16px; height: 16px; margin-right: 4px; }
 .student-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }

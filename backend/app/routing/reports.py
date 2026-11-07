@@ -5,7 +5,6 @@ import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel
 
 from app.grading.exams import resolve_exam
 from app.grading.reports import exam_reports, filename, points, report_pdf
@@ -15,24 +14,13 @@ from app.routing.grading import Service
 router = APIRouter(prefix='/api/assignments/{assignment_id}', dependencies=[Depends(current_user)])
 
 
-class ReleaseIn(BaseModel):
-    released: bool
-
-
 @router.get('/release')
 def release_status(assignment_id: str, svc: Service):
+    """When grades were released, which is when the assignment was closed. Closing and reopening go through
+    PUT /api/assignments/{assignment_id}/status."""
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
-        return conn.execute('SELECT released_at FROM assignment WHERE exam_id=%s', (exam,)).fetchone()
-
-
-@router.put('/release')
-def set_release(assignment_id: str, body: ReleaseIn, svc: Service):
-    """Releasing keeps the first release time; the change log records who did it."""
-    exam = resolve_exam(svc, assignment_id)
-    with svc.access(exam) as (conn, _):
-        return conn.execute('''UPDATE assignment SET released_at=CASE WHEN %s THEN COALESCE(released_at, clock_timestamp()) END
-            WHERE exam_id=%s RETURNING released_at''', (body.released, exam)).fetchone()
+        return conn.execute('SELECT released_at, status FROM assignment WHERE exam_id=%s', (exam,)).fetchone()
 
 
 @router.get('/reports/{student_uid}.pdf')
@@ -41,7 +29,7 @@ def student_report(assignment_id: str, student_uid: str, svc: Service, download:
     with svc.access(exam) as (conn, _):
         info, reports = exam_reports(conn, exam, student_uid)
     if not reports:
-        raise HTTPException(404, 'No scanned exam for this student')
+        raise HTTPException(404, 'No scanned exam or no-show for this student')
     disposition = 'attachment' if download else 'inline'
     return Response(report_pdf(info, reports[0]), media_type='application/pdf',
                     headers={'Content-Disposition': f'{disposition}; filename="{filename(reports[0])}"'})

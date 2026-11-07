@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { plural } from '@/lib/rubric'
-import { fetchStudentScores, reportsZipUrl, setGradesReleased } from '@/services/reportExportService'
+import { changeStatus } from '@/exam-distribution/lib/api'
+import { fetchStudentScores, reportsZipUrl } from '@/services/reportExportService'
 import styles from './releaseGrades.module.css'
 
 const names = (students) =>
@@ -12,7 +13,8 @@ const names = (students) =>
     ? students.map((s) => s.name).join(', ')
     : `${students.slice(0, 3).map((s) => s.name).join(', ')} and ${students.length - 3} more`
 
-// Figure 9a. Opens as a modal while mounted; grades can be released once every scanned exam is fully graded.
+// Figure 9a. Opens as a modal while mounted. Closing the assignment releases its grades, once every student has a
+// grade: their exam fully graded, or a no-show (0). Missing and excused students have to be resolved first.
 export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
   const dialog = useRef(null)
   const [students, setStudents] = useState(null)
@@ -27,16 +29,18 @@ export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
       .catch((err) => setError(err.message))
   }, [examId])
 
-  const exams = students?.filter((s) => s.hasExam) ?? []
-  const missing = students?.filter((s) => !s.hasExam) ?? []
+  const tracked = students?.filter((s) => s.status) ?? []
+  const exams = tracked.filter((s) => s.hasExam)
+  const noShows = tracked.filter((s) => s.noShow)
+  const unresolved = tracked.filter((s) => !s.hasExam && !s.noShow)
   const unfinished = exams.filter((s) => !s.graded)
-  const ready = exams.length > 0 && unfinished.length === 0
+  const ready = tracked.length > 0 && unresolved.length === 0 && unfinished.length === 0
 
   async function release() {
     setSaving(true)
     setError('')
     try {
-      const { released_at } = await setGradesReleased(examId, true)
+      const { released_at } = await changeStatus(examId, 'closed')
       if (download) window.location.assign(reportsZipUrl(examId))
       onReleased(released_at)
     } catch (err) {
@@ -48,7 +52,7 @@ export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
   return (
     <dialog ref={dialog} className={styles.dialog} onClose={onClose} aria-labelledby="release-title">
       <h2 id="release-title" className={styles.title}>
-        Release grades for {examTitle}?
+        Close {examTitle} and release grades?
       </h2>
 
       {!students && !error && <p className={styles.muted}>Checking grading…</p>}
@@ -65,9 +69,15 @@ export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
               Finish grading before releasing.
             </p>
           )}
-          {missing.length > 0 && (
+          {unresolved.length > 0 && (
+            <p className={styles.warning}>
+              {names(unresolved)} {unresolved.length === 1 ? 'has' : 'have'} no grade yet (missing or excused). Upload their
+              exam or mark them a no-show before closing.
+            </p>
+          )}
+          {noShows.length > 0 && (
             <p className={styles.text}>
-              {names(missing)} {missing.length === 1 ? 'has' : 'have'} no exam and won’t get a report.
+              {names(noShows)} {noShows.length === 1 ? 'is a no-show and gets' : 'are no-shows and get'} 0.
             </p>
           )}
           <p className={styles.private}>
@@ -83,7 +93,7 @@ export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
             <input type="checkbox" disabled />
             Email each student <span className={styles.muted}>· not set up yet</span>
           </label>
-          <p className={styles.muted}>Releasing grades is recorded in the change log.</p>
+          <p className={styles.muted}>Closing locks grading and is recorded in the change log. An instructor can reopen it.</p>
         </>
       )}
 
@@ -96,7 +106,7 @@ export function ReleaseGrades({ examId, examTitle, onReleased, onClose }) {
       <div className={styles.actions}>
         <Button onClick={() => dialog.current.close()}>Cancel</Button>
         <Button variant="primary" onClick={release} disabled={!ready || saving}>
-          Release grades
+          Close and release
         </Button>
       </div>
     </dialog>

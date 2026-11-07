@@ -2,12 +2,15 @@
 which is how uploaded scans are split into one exam per student."""
 
 import json
+import re
+import shutil
 
 import pymupdf
 
 from app import config, store
 from app.processing import TEMPLATE_DIR
 from app.services.cover_detector import CoverDetector, render_page
+from app.slugs import SLUG_PATTERN
 
 
 def _relative(path) -> str:
@@ -51,3 +54,14 @@ def save_answer_key(assignment_id: str, pdf: bytes) -> str:
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
     path.write_bytes(pdf)
     return _relative(path)
+
+
+def delete_files(assignment_id: str) -> None:
+    """Remove everything saved on disk for an assignment: blank exam, cover template, answer key, uploaded
+    scans and the exams split from them."""
+    if not re.match(SLUG_PATTERN, assignment_id):
+        return
+    for name in (f"{assignment_id}.json", f"{assignment_id}.pdf", f"{assignment_id}_answer_key.pdf"):
+        (TEMPLATE_DIR / name).unlink(missing_ok=True)
+    shutil.rmtree(store.UPLOAD_DIR / assignment_id, ignore_errors=True)
+    shutil.rmtree(store.SUBMISSION_DIR / assignment_id, ignore_errors=True)

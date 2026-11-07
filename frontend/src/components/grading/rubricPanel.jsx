@@ -14,7 +14,7 @@ const NEW_QUESTION = 'new-question'
 // The question an editor key belongs to: 'edit:Q1', 'criterion:Q1:12', 'new-criterion:Q1' and 'new-part:Q1' are Q1's.
 const ownerOf = (key) => (key === NEW_QUESTION ? key : key?.split(':')[1])
 
-export function RubricPanel({ questions, submissionCount, actions, grading, className }) {
+export function RubricPanel({ questions, submissionCount, actions, grading, className, allowSubquestions = true }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
   // Only one editor is open at a time, so opening another closes it.
   const [editor, setEditor] = useState(null)
@@ -84,9 +84,6 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
         )}
       </div>
 
-      {grading && topLevel.length > 0 && (
-        <p className={styles.instructions}>Select criteria to apply adjustments to the question score.</p>
-      )}
 
       <div className={styles.list}>
         {topLevel.length === 0 && editor !== NEW_QUESTION && (
@@ -102,6 +99,7 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
             onToggle={toggle}
             actions={actions}
             grading={grading}
+            allowSubquestions={allowSubquestions}
             {...editors}
           />
         ))}
@@ -118,14 +116,6 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
 
       <div className={styles.footer}>
         <div className={styles.notice}>
-          <span>Rubric changes autosave</span>
-          <span className={styles.noticeDetail}>
-            {submissionCount === 1
-              ? 'Applies to 1 submission'
-              : submissionCount
-                ? `Applies to all ${submissionCount} submissions`
-                : 'Applies to every submission'}
-          </span>
         </div>
         <Button
           variant="primary"

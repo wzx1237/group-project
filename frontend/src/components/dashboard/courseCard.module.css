@@ -1,9 +1,13 @@
 .card {
-  --exam-columns: minmax(0, 1fr) 130px 120px 260px 16px;
+  --exam-columns: minmax(0, 1fr) 110px 130px 120px 260px 16px;
   overflow: hidden;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+}
+
+.withDelete {
+  --exam-columns: minmax(0, 1fr) 110px 130px 120px 260px 16px 160px;
 }
 
 .heading {

@@ -29,6 +29,20 @@
 
 /* dashboard addition  */
 
+.termSection {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  margin-bottom: 24px;
+}
+
+.termTitle {
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted, #4b5563);
+  letter-spacing: -0.01em;
+}
 
 .headerRow {
   display: flex;
@@ -130,6 +144,77 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
+.optionsMenu {
+  position: absolute;
+  top: 42px;
+  right: 8px;
+  z-index: 40;
+  background: #ffffff;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.12), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
+  min-width: 190px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.optionsMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.optionsMenuItem:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.menuIcon {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.imagePreviewBox {
+  height: 124px;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  overflow: hidden;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.imagePreviewEmpty {
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dialogSubtitle {
+  margin: -4px 0 6px 0;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
 .cardBody {
   padding: 14px 16px 16px;
   display: flex;
@@ -165,13 +250,40 @@
   color: var(--muted, #6b7280);
 }
 
-.cardFooter {
-  display: flex;
+.olderCoursesSection {
+  margin-top: 6px;
+  margin-bottom: 24px;
+}
+
+.olderCoursesToggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #0b6bba;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
-  gap: 22px;
-  padding: 10px 16px 14px;
-  border-top: 1px solid #f3f4f6;
+  gap: 4px;
+  transition: color 0.15s ease;
+}
+
+.olderCoursesToggle:hover {
+  text-decoration: underline;
+  color: #095290;
+}
+
+.olderCoursesContent {
+  margin-top: 18px;
+}
+
+.noOlderCourses {
+  font-size: 13px;
   color: var(--muted, #6b7280);
+  font-style: italic;
+  margin: 0;
+  padding: 4px 0;
 }
 
 .cardIcon {

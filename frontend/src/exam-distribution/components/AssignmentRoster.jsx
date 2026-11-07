@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAssignmentRoster, submissionUrl } from '../lib/api.js'
-import { STATUSES } from '../lib/status.js'
+import { studentLabel, studentState } from '../lib/status.js'
 import StatusKey from './StatusKey.jsx'
 import { coursePath } from '@/lib/routes'
 
@@ -24,28 +24,31 @@ export default function AssignmentRoster({ course, assignment }) {
       <p className="sub">
         {course.code} {course.term}
       </p>
-      <StatusKey blankLabel="Not known yet" />
+      <StatusKey blankLabel="Assignment still in draft" />
       {error && <p className="status error">{error}</p>}
       {!data && !error && <p className="status">Loading…</p>}
       {data && (
         <>
-          {!data.all_assigned && (
-            <p className="note">
-              Students without an exam stay blank until every exam is assigned to a student.
-            </p>
+          {data.assignment_status === 'draft' && (
+            <p className="note">Student statuses start once the assignment is published to TAs.</p>
           )}
           <ul className="upload-list roster-rows">
             {data.students.map((s) => (
               <li key={s.uid}>
                 <span className="roster-name">
-                  <span className={`box ${s.status || ''}`} />
+                  <span className={`box ${studentState(s.progress)}`} />
                   <span>
                     <strong>{s.name}</strong>
                     <span className="count"> · {s.directory_id}</span>
                   </span>
                 </span>
                 <span className="roster-right">
-                  <span className="count">{STATUSES.find((x) => x.id === s.status)?.label ?? ''}</span>
+                  <span className="count">
+                    {studentLabel(s.progress)}
+                    {s.progress?.status === 'matched' && !s.progress.graded && s.progress.questions > 0 &&
+                      ` · ${s.progress.finished} of ${s.progress.questions} graded`}
+                    {s.progress?.note && ` · ${s.progress.note}`}
+                  </span>
                   {s.submission && (
                     <a
                       href={submissionUrl(assignment.id, s.submission.upload_id, s.submission.submission_id)}

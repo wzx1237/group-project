@@ -16,10 +16,8 @@ import styles from './upload.module.css'
 export default function UploadSubmissionsPage() {
   const { examId } = useParams()
   const { refresh } = useCourse()
-  const { exam, students, error, uploading, upload, match, reprocess, remove, assign, unassign } = useExamUploads(
-    examId,
-    refresh,
-  )
+  const { exam, students, error, uploading, upload, match, reprocess, remove, assign, unassign, mark, reload } =
+    useExamUploads(examId, refresh)
 
   if (!exam || !students) {
     return (
@@ -36,10 +34,16 @@ export default function UploadSubmissionsPage() {
   }
 
   const withExam = students.filter((s) => s.submission).length
+  // Scans are uploaded and matched only while collecting; excusing and no-shows stay open until the assignment closes.
+  const collecting = exam.status === 'collecting'
+  const open = ['collecting', 'grading', 'in_review'].includes(exam.status)
 
   return (
     <main className={styles.page}>
-      <ExamHeader meta={`${withExam} of ${students.length} ${students.length === 1 ? 'student has' : 'students have'} an exam`} />
+      <ExamHeader
+        meta={`${withExam} of ${students.length} ${students.length === 1 ? 'student has' : 'students have'} an exam`}
+        onStatusChange={reload}
+      />
 
       {error && (
         <p className={styles.error} role="alert">
@@ -56,13 +60,16 @@ export default function UploadSubmissionsPage() {
               </h2>
               <span className={cards.cardMeta}>PDF files only</span>
             </div>
+            {exam.status === 'draft' && (
+              <p className={styles.notice}>Scans can be uploaded once {exam.title} is published to TAs.</p>
+            )}
             {!exam.cover_template && (
               <p className={styles.notice}>
                 {exam.title} doesn’t have a cover template yet, so scans can’t be split into one exam per student. Uploading
                 opens once the template is set up.
               </p>
             )}
-            <PdfDropZone onUploadFiles={upload} uploading={uploading} disabled={!exam.cover_template} />
+            <PdfDropZone onUploadFiles={upload} uploading={uploading} disabled={!exam.cover_template || !collecting} />
             <UploadedFiles examId={examId} uploads={exam.uploads} onMatch={match} onReprocess={reprocess} onRemove={remove} />
           </section>
 
@@ -71,7 +78,7 @@ export default function UploadSubmissionsPage() {
 
         <aside className={styles.column}>
           <UploadStatusCard uploads={exam.uploads} students={students} />
-          <MissingExamsCard students={students} />
+          <MissingExamsCard students={students} open={open} onMark={mark} />
         </aside>
       </div>
     </main>

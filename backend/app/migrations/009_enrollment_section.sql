@@ -1,0 +1,2 @@
+ALTER TABLE enrollment ADD COLUMN IF NOT EXISTS section TEXT;
+ALTER TABLE enrollment ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';

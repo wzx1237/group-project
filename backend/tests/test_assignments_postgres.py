@@ -74,7 +74,7 @@ def test_course_and_assignment_endpoints_read_the_database(api):
     assert [a['id'] for a in body['assignments']] == ['quiz-1', 'quiz-2', 'notes']
     assert body['assignments'][0]['uploads'] == []
     one = client.get('/api/assignments/quiz-2').json()
-    assert (one['title'], one['kind'], one['uploads'], one['statuses']) == ('Quiz 2', 'quiz', [], {})
+    assert (one['title'], one['kind'], one['uploads'], one['status']) == ('Quiz 2', 'quiz', [], 'draft')
     assert client.get('/api/assignments/hidden').status_code == 404  # another course's assignment
     assert client.get('/api/assignments/nope/roster').status_code == 404
 
@@ -135,6 +135,45 @@ def test_only_an_instructor_in_the_course_adds_a_student(api):
     with database.get_connection() as conn:
         assert conn.execute("SELECT name FROM student WHERE uid='345678901'").fetchone()['name'] == 'Renamed'
         assert conn.execute("SELECT count(*) AS n FROM enrollment WHERE uid='345678901' AND course_id=1").fetchone()['n'] == 1
+
+
+def test_add_multiple_students_at_the_same_time(api):
+    client, database = api
+    client.app.dependency_overrides[current_user] = lambda: 'teacher'
+    students = [
+        {'uid': '111222333', 'name': 'Student One', 'email': 'one@umd.edu', 'section': '0101'},
+        {'uid': '222333444', 'name': 'Student Two', 'email': 'two@umd.edu', 'section': '0102'},
+    ]
+    res = client.post('/api/courses/1/roster', json=students)
+    assert res.status_code == 201, res.text
+    assert len(res.json()) == 2
+    with database.get_connection() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM enrollment WHERE course_id=1").fetchone()['n'] >= 2
+
+
+def test_upload_roster_csv(api):
+    client, database = api
+    csv_content = """UID,Name,Email,Section
+118492041,Alex Rivera,arivera@terpmail.umd.edu,0101
+119302847,Samantha Chen,schen24@terpmail.umd.edu,0101
+"""
+    # Alice is a TA -> 403 Forbidden
+    res = client.post('/api/courses/1/roster/upload', files={'file': ('roster.csv', csv_content, 'text/csv')})
+    assert res.status_code == 403
+
+    # Teacher is instructor -> 201 Created
+    client.app.dependency_overrides[current_user] = lambda: 'teacher'
+    res = client.post('/api/courses/1/roster/upload', files={'file': ('roster.csv', csv_content, 'text/csv')})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body['uploaded'] == 2
+    with database.get_connection() as conn:
+        assert conn.execute("SELECT name FROM student WHERE uid='118492041'").fetchone()['name'] == 'Alex Rivera'
+
+    # Invalid UID (< 9 digits) -> 422 Unprocessable
+    bad_csv = "UID,Name\n123,Bad UID\n"
+    res = client.post('/api/courses/1/roster/upload', files={'file': ('roster.csv', bad_csv, 'text/csv')})
+    assert res.status_code == 422
 
 
 def test_slugs_start_with_a_letter(api):

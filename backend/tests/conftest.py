@@ -26,7 +26,7 @@ from app.settings import Settings
 @pytest.fixture(autouse=True)
 def no_database(monkeypatch):
     monkeypatch.setattr(db, "open_database", lambda url: contextlib.nullcontext())
-    monkeypatch.setattr(rosters, "students", lambda pool=None: rosters.students_csv())
+    monkeypatch.setattr(rosters, "students", lambda pool=None, course_id=None: rosters.students_csv())
     # Stand in for the database's course and assignments with what config.json describes.
     cfg = config.load()
     course = {
