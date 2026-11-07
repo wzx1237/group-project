@@ -10,6 +10,8 @@ import psycopg
 
 from app import config
 from app.settings import Settings
+from app.database import course as course_db
+from app.database import staff as staff_db
 
 
 def add_staff(url: str, directory_id: str, name: str, role: str, email: str | None) -> None:
@@ -17,22 +19,10 @@ def add_staff(url: str, directory_id: str, name: str, role: str, email: str | No
     role = role.lower()
     course = config.load()["course"]
     with psycopg.connect(url) as conn:
-        conn.execute(
-            """INSERT INTO staff (directory_id, name, email, role) VALUES (%s, %s, %s, %s)
-               ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role""",
-            (directory_id, name, email, role),
-        )
-        conn.execute(
-            "INSERT INTO course (code, term) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (course["code"], course["term"]),
-        )
-        [course_id] = conn.execute(
-            "SELECT course_id FROM course WHERE code = %s AND term = %s", (course["code"], course["term"])
-        ).fetchone()
-        conn.execute(
-            "INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (course_id, directory_id),
-        )
+        staff_db.upsert_staff(conn, directory_id, name, email, role)
+        course_db.ensure_course(conn, course['code'], course['term'])
+        [course_id] = course_db.course_id_by_term(conn, course['code'], course['term'])
+        staff_db.ensure_course_member(conn, course_id, directory_id)
     print(f"Added {directory_id} ({role}) to {course['code']} {course['term']}")
 
 

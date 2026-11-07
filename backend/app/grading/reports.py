@@ -2,6 +2,7 @@
 
 Internal notes, criteria that weren't applied, grader names and history are left out.
 """
+
 from html import escape
 from pathlib import Path
 import io
@@ -10,6 +11,7 @@ import re
 import pymupdf
 
 from app import config
+from app.database import reports as reports_db
 
 CSS = """
 * { font-family: sans-serif; }
@@ -52,30 +54,15 @@ def exam_reports(conn, exam, student=None):
     A question counts as graded once its mapping is Finished, the same rule the assignment workflow uses.
     A no-show has no scan and scores 0 on every question.
     """
-    info = conn.execute('''SELECT e.exam_name, e.released_at, c.code, c.term FROM assignment e
-        JOIN course c USING(course_id) WHERE e.exam_id=%s''', (exam,)).fetchone()
-    questions = _questions(conn.execute('SELECT qid, title, total_scores FROM rubric WHERE exam_id=%s',
-                                        (exam,)).fetchall())
+    info = reports_db.exam_info(conn, exam)
+    questions = _questions(reports_db.exam_questions(conn, exam))
     info = {**info, 'questions': len(questions), 'possible': sum(q['total_scores'] or 0 for q in questions)}
-    decisions = {(d['uid'], d['qid']): d for d in conn.execute(
-        'SELECT uid, qid, record_id, scores, comments_remark FROM decision WHERE exam_id=%s', (exam,)).fetchall()}
-    finished = {(m['uid'], m['qid']) for m in conn.execute(
-        "SELECT uid, qid FROM mapping WHERE exam_id=%s AND lower(status)='finished'", (exam,)).fetchall()}
+    decisions = {(d['uid'], d['qid']): d for d in reports_db.exam_decisions(conn, exam)}
+    finished = {(m['uid'], m['qid']) for m in reports_db.finished_answers(conn, exam)}
     applied = {}
-    for row in conn.execute('''SELECT dl.record_id, l.title, l.deduction FROM decision_label dl
-        JOIN label l ON (l.exam_id,l.label_id)=(dl.exam_id,dl.label_id)
-        WHERE dl.exam_id=%s ORDER BY l.label_id''', (exam,)).fetchall():
+    for row in reports_db.selected_label_details(conn, exam):
         applied.setdefault(row['record_id'], []).append(row)
-    students = conn.execute('''SELECT p.uid, s.name, p.scanned_pdf, false AS no_show FROM studentpaper p
-        JOIN student s USING(uid) JOIN assignment e USING(exam_id)
-        JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-        WHERE p.exam_id=%s AND (%s::text IS NULL OR p.uid=%s)
-        UNION ALL
-        SELECT a.uid, s.name, NULL, true FROM assignment_student a JOIN student s USING(uid)
-        JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=a.uid AND en.course_id=e.course_id
-        WHERE a.exam_id=%s AND a.status='no_show' AND (%s::text IS NULL OR a.uid=%s)
-          AND NOT EXISTS (SELECT 1 FROM studentpaper p WHERE p.exam_id=a.exam_id AND p.uid=a.uid)
-        ORDER BY name, uid''', (exam, student, student, exam, student, student)).fetchall()
+    students = reports_db.exam_students(conn, exam, student)
     reports = []
     for s in students:
         rows = []

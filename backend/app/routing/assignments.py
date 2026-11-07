@@ -1,4 +1,5 @@
 """Create courses, and create and edit a course's assignments. Reading them is done by /api/courses and /api/course."""
+
 from datetime import date
 from typing import Annotated, Literal
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel, Field
 from app import assignments, cover_templates, store, workflow
 from app.assignments import courses_for
 from app.routing.auth import current_user
+from app.database import course as course_db
+from app.database import staff as staff_db
 
 router = APIRouter(prefix='/api')
 
@@ -63,17 +66,13 @@ def create_course(body: CourseIn, request: Request, user: Staff):
         raise HTTPException(422, 'Enter a course code and term')
     db = request.app.state.grading_db
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
-        staff = conn.execute('SELECT role FROM staff WHERE directory_id = %s', (user,)).fetchone()
+        staff = staff_db.staff_role(conn, user)
         if staff is None or staff['role'] != 'instructor':
             raise HTTPException(403, 'Only instructors can create courses')
-        row = conn.execute(
-            """INSERT INTO course (code, term, title) VALUES (%s, %s, %s)
-               ON CONFLICT (code, term) DO NOTHING RETURNING course_id""",
-            (code, term, title),
-        ).fetchone()
+        row = course_db.create_course(conn, code, term, title)
         if row is None:
             raise HTTPException(409, f'{code} {term} already exists')
-        conn.execute('INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s)', (row['course_id'], user))
+        staff_db.add_course_member(conn, row['course_id'], user)
         return next(c for c in courses_for(conn, user) if c['course_id'] == row['course_id'])
 
 
@@ -84,40 +83,20 @@ def edit_course(course_id: int, body: CourseEdit, request: Request, user: Staff)
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
         if not assignments.is_member(conn, course_id, user):
             raise HTTPException(403, 'Not a member of this course')
-        existing = conn.execute('SELECT * FROM course WHERE course_id = %s', (course_id,)).fetchone()
+        existing = course_db.course_row(conn, course_id)
         if existing is None:
             raise HTTPException(404, 'Course not found')
 
-        updates = []
-        params = []
-        if body.code is not None:
-            code = body.code.strip()
-            if not code:
-                raise HTTPException(422, 'Course code cannot be empty')
-            updates.append("code = %s")
-            params.append(code)
-        if body.term is not None:
-            term = body.term.strip()
-            if not term:
-                raise HTTPException(422, 'Term cannot be empty')
-            updates.append("term = %s")
-            params.append(term)
-        if body.title is not None:
-            title = body.title.strip() or None
-            updates.append("title = %s")
-            params.append(title)
-        if body.image is not None:
-            image = body.image.strip() or None
-            try:
-                conn.execute("ALTER TABLE course ADD COLUMN IF NOT EXISTS image TEXT")
-            except Exception:
-                pass
-            updates.append("image = %s")
-            params.append(image)
-
-        if updates:
-            params.append(course_id)
-            conn.execute(f"UPDATE course SET {', '.join(updates)} WHERE course_id = %s", params)
+        changes = {}
+        for field in ("code", "term", "title", "image"):
+            value = getattr(body, field)
+            if value is None:
+                continue
+            value = value.strip()
+            if field in ("code", "term") and not value:
+                raise HTTPException(422, f"Course {field} cannot be empty")
+            changes[field] = value or None
+        course_db.update_course_columns(conn, course_id, changes)
 
         return next((c for c in courses_for(conn, user) if c['course_id'] == course_id), None)
 

@@ -1,4 +1,5 @@
 """Course discovery, exclusive grading workspaces and atomic decisions."""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -8,6 +9,8 @@ from pydantic import BaseModel, Field
 from app.assignments import courses_for
 from app.grading.service import GradingService
 from app.routing.auth import current_user
+from app.database import grading as grading_db
+from app.database import staff as staff_db
 
 router = APIRouter(prefix='/api')
 
@@ -41,22 +44,10 @@ def courses(svc: Service):
 def course_questions(course_ID: int, svc: Service):
     """Exam/question choices with this TA's outstanding and available work."""
     with svc.db.audit_context(actor_ID=svc.actor), svc.db.get_connection() as conn:
-        membership = conn.execute('SELECT s.role FROM course_staff cs JOIN staff s USING(directory_id) WHERE course_id=%s AND directory_id=%s FOR SHARE',
-                                  (course_ID, svc.actor)).fetchone()
+        membership = staff_db.lock_course_membership(conn, course_ID, svc.actor)
         if membership is None:
             raise HTTPException(403, 'Not a member of this course')
-        return conn.execute('''SELECT e.exam_id,e.exam_name,r.qid,r.grading_method,r.total_scores,
-            count(m.uid) FILTER (WHERE m.directory_id=%s) AS assigned,
-            count(m.uid) FILTER (WHERE m.directory_id=%s AND lower(m.status)='finished') AS finished,
-            count(m.uid) FILTER (WHERE m.directory_id=%s AND lower(m.status)='regrade') AS regrade,
-            (SELECT count(*) FROM studentpaper p JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-             WHERE p.exam_id=e.exam_id AND NOT EXISTS
-             (SELECT 1 FROM mapping other WHERE other.exam_id=e.exam_id AND other.uid=p.uid AND other.qid=r.qid
-              AND (other.directory_id IS NOT NULL AND other.directory_id<>%s OR lower(other.status)='finished')))
-             AS available
-            FROM assignment e JOIN rubric r USING(exam_id) LEFT JOIN mapping m USING(exam_id,qid)
-            WHERE e.course_id=%s GROUP BY e.exam_id,r.exam_id,r.qid ORDER BY e.exam_id,r.qid''',
-                            (svc.actor, svc.actor, svc.actor, svc.actor, course_ID)).fetchall()
+        return grading_db.course_question_progress(conn, svc.actor, course_ID)
 
 
 @router.get('/exams/{exam_ID}/students/{UID}/questions/{QID}/workspace')

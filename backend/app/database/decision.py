@@ -9,42 +9,44 @@ __all__ = ["Decision"]
 class Decision:
   """Business methods sharing Database transaction and audit handling."""
 
-  def get_grading_decision(self, UID: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
-    '''
-    input: student UID (dtype: string)
-    output: a dictionary of grading decision, in format {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...)
-    '''
-    try:
-      # using 'with' to handle commit() and pool.connection return our connection to our pool
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""", 
-          (exam_ID, UID)
-        )
-        return self.get_all(cursor)    # search with value, could have multiple results
-    except psycopg.Error as error:
-      # if exception happens, save it to our log
-      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
-      raise
+  # Retired: reports.exam_decisions is the reporting query.
+  # def get_grading_decision(self, UID: str, *, exam_ID: int) -> List[Dict[str, Any]] | None:
+  #   '''
+  #   input: student UID (dtype: string)
+  #   output: a dictionary of grading decision, in format {record_ID: ..., uid: ..., QID: ..., scores: ..., comments_remark: ...)
+  #   '''
+  #   try:
+  #     # using 'with' to handle commit() and pool.connection return our connection to our pool
+  #     with self.get_worker() as cursor:
+  #       cursor.execute(
+  #         """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""",
+  #         (exam_ID, UID)
+  #       )
+  #       return self.get_all(cursor)    # search with value, could have multiple results
+  #   except psycopg.Error as error:
+  #     # if exception happens, save it to our log
+  #     logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
+  #     raise
 
-  def get_student_total_score(self, UID: str, *, exam_ID: int) -> float | None:
-    '''
-    input: student UID (dtype: string or int)
-    output: the student scores for this exam
-    '''
-    try:
-      # using 'with' to handle commit() and pool.connection return our connection to our pool
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """SELECT COALESCE(SUM(scores), 0) AS Total FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""", 
-          (exam_ID, UID)
-        )
-        result = self.get_one(cursor)    # only one sun will be returned, use fetchone
-        return float(result["total"])
-    except psycopg.Error as error:
-      # if exception happens, save it to our log
-      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
-      raise
+  # Retired: reports calculates assignment totals with incomplete and no-show semantics.
+  # def get_student_total_score(self, UID: str, *, exam_ID: int) -> float | None:
+  #   '''
+  #   input: student UID (dtype: string or int)
+  #   output: the student scores for this exam
+  #   '''
+  #   try:
+  #     # using 'with' to handle commit() and pool.connection return our connection to our pool
+  #     with self.get_worker() as cursor:
+  #       cursor.execute(
+  #         """SELECT COALESCE(SUM(scores), 0) AS Total FROM Decision WHERE Decision.exam_ID = %s AND uid = %s""",
+  #         (exam_ID, UID)
+  #       )
+  #       result = self.get_one(cursor)    # only one sun will be returned, use fetchone
+  #       return float(result["total"])
+  #   except psycopg.Error as error:
+  #     # if exception happens, save it to our log
+  #     logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
+  #     raise
 
   def get_decision(self, record_ID: int, *, exam_ID: int) -> Dict[str, Any] | None:
     '''
@@ -54,7 +56,7 @@ class Decision:
     try:
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND record_ID = %s""", 
+          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND record_ID = %s""",
           (exam_ID, record_ID)
         )
         return self.get_one(cursor)    # primary key search, only one return
@@ -71,7 +73,7 @@ class Decision:
     try:
       with self.get_worker() as cursor:
         cursor.execute(
-          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""", 
+          """SELECT * FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""",
           (exam_ID, UID, QID)
         )
         return self.get_one(cursor)    # promise to be UNIQUE(UID, QID), only one return
@@ -107,7 +109,7 @@ class Decision:
           raise ValueError("The student answer does not exist")
         # check whether we already have this decision; if have, you should use update_decision
         cursor.execute(
-          """SELECT record_ID FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""", 
+          """SELECT record_ID FROM Decision WHERE Decision.exam_ID = %s AND uid = %s AND QID = %s""",
           (exam_ID, UID, QID)
         )
         if self.get_one(cursor) is not None:
@@ -205,7 +207,7 @@ class Decision:
   def _lock_decision(self, cursor, record_ID: int, exam_ID: int):
     """Serialize changes even when this decision currently has no labels."""
     cursor.execute(
-      """SELECT * FROM Decision WHERE exam_ID = %s AND record_ID = %s FOR NO KEY UPDATE""", 
+      """SELECT * FROM Decision WHERE exam_ID = %s AND record_ID = %s FOR NO KEY UPDATE""",
       (exam_ID, record_ID)
     )
     decision = self.get_one(cursor)
@@ -222,7 +224,7 @@ class Decision:
         JOIN assignment AS e ON e.course_id = cs.course_id
         WHERE e.exam_ID = %s AND cs.directory_id = %s
         FOR SHARE OF cs, e
-        """, 
+        """,
         (exam_ID, directory_ID)
       )
       if self.get_one(cursor) is None:
@@ -252,3 +254,26 @@ class Decision:
       'UPDATE Decision SET scores = %s, updated_at = clock_timestamp() WHERE exam_ID = %s AND record_ID = %s',
       (score, exam_ID, record_ID)
     )
+
+
+def enrolled_decisions(conn, exam_id, uid) -> list[dict]:
+    """Enrolled decisions; return rows in query order."""
+    return conn.execute(
+        """SELECT d.* FROM decision d JOIN assignment e USING(exam_id)
+        JOIN enrollment en ON en.uid=d.uid AND en.course_id=e.course_id
+        WHERE d.exam_id=%s AND (%s::text IS NULL OR d.uid=%s) ORDER BY d.uid,d.qid""",
+        (exam_id, uid, uid),
+    ).fetchall()
+
+
+def set_internal_note(conn, internal_note, exam_id, uid, qid) -> int:
+    """Set internal note; return the affected row count."""
+    return conn.execute(
+        """UPDATE decision SET internal_note=%s,updated_at=clock_timestamp() WHERE exam_id=%s AND uid=%s AND qid=%s""",
+        (internal_note, exam_id, uid, qid),
+    ).rowcount
+
+
+def has_saved_decisions(conn, exam_id, uids) -> dict | None:
+    """Has saved decisions; return None when missing."""
+    return conn.execute('SELECT 1 FROM decision WHERE exam_id = %s AND uid = ANY(%s) LIMIT 1', (exam_id, uids)).fetchone()

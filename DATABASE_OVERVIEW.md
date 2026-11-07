@@ -1,3 +1,5 @@
+> 历史设计快照。当前数据访问 API、停用方法与维护约定见 `backend/app/database/README.md` 和 `REFACTOR_PLAN.md`。
+
 # GradeFlow Data Storage Overview
 
 GradeFlow keeps its data in two places:

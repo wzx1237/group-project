@@ -1,4 +1,3 @@
-
 from typing import Literal, Annotated
 from app.grading.exams import resolve_exam
 from app import workflow
@@ -8,6 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.routing.auth import current_user
+from app.database import decision as decision_db
+from app.database import grading as grading_db
+from app.database import label as label_db
 
 router = APIRouter(prefix="/api/assignments/{assignment_id}", dependencies=[Depends(current_user)])
 
@@ -98,11 +100,8 @@ def grading_queue(assignment_id: str,svc: Service,section: str | None=None,mine:
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn,_):
         # Include late-uploaded papers without inventing scores for ungraded work.
-        conn.execute("""INSERT INTO mapping(exam_id,uid,qid,status)
-          SELECT p.exam_id,p.uid,r.qid,'Pending' FROM studentpaper p JOIN rubric r USING(exam_id)
-          JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-          WHERE p.exam_id=%s ON CONFLICT DO NOTHING""",(exam,))
-        rows=conn.execute('SELECT * FROM mapping WHERE exam_id=%s ORDER BY uid,qid',(exam,)).fetchall()
+        grading_db.seed_exam_mappings(conn, exam)
+        rows=grading_db.exam_mappings(conn, exam)
         return [entry(r) for r in rows if not mine or r['directory_id']==svc.actor]
 
 
@@ -111,9 +110,7 @@ def claim(assignment_id: str,qid: str,student_uid: str,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam,qid) as (conn,_):
         workflow.require(conn,exam,GRADING,'Grading')
-        row=conn.execute("""UPDATE mapping SET directory_id=%s,status=CASE WHEN lower(status)='regrade' THEN 'Regrade' ELSE 'InProgress' END
-          WHERE exam_id=%s AND uid=%s AND qid=%s AND (directory_id IS NULL OR directory_id=%s)
-          AND lower(status)<>'finished' RETURNING *""",(svc.actor,exam,student_uid,qid,svc.actor)).fetchone()
+        row=grading_db.claim_available_answer(conn, svc.actor, exam, student_uid, qid)
         if row is None:
             raise HTTPException(409,'Answer unavailable')
         return entry(row)
@@ -124,7 +121,7 @@ def release(assignment_id: str,qid: str,student_uid: str,svc: Service):
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam,qid) as (conn,_):
         svc.release(exam,student_uid,qid)
-        return entry(conn.execute('SELECT * FROM mapping WHERE exam_id=%s AND uid=%s AND qid=%s',(exam,student_uid,qid)).fetchone())
+        return entry(grading_db.mapping_row(conn, exam, student_uid, qid))
 
 
 @router.post('/reassign',response_model=QueueEntry)
@@ -134,8 +131,7 @@ def reassign(assignment_id: str,body: ReassignIn,svc: Service):
         workflow.require(conn,exam,GRADING,'Reassigning answers')
         if body.grader_directory_id is not None:
             svc.db._validate_graders(conn.cursor(),[body.grader_directory_id],exam)
-        row=conn.execute('UPDATE mapping SET directory_id=%s WHERE exam_id=%s AND uid=%s AND qid=%s RETURNING *',
-                         (body.grader_directory_id,exam,body.student_uid,body.qid)).fetchone()
+        row=grading_db.reassign_answer(conn, body.grader_directory_id, exam, body.student_uid, body.qid)
         if row is None:
             raise HTTPException(404,'Assignment not found')
         return entry(row)
@@ -146,16 +142,9 @@ def exam_decisions(assignment_id: str,svc: Service,student_uid: str | None=None)
     """Every saved decision for enrolled students, by student and question; optionally one student's."""
     exam=resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn,_):
-        rows=conn.execute('''SELECT d.* FROM decision d JOIN assignment e USING(exam_id)
-            JOIN enrollment en ON en.uid=d.uid AND en.course_id=e.course_id
-            WHERE d.exam_id=%s AND (%s::text IS NULL OR d.uid=%s) ORDER BY d.uid,d.qid''',
-            (exam,student_uid,student_uid)).fetchall()
+        rows=decision_db.enrolled_decisions(conn, exam, student_uid)
         labels={}
-        for row in conn.execute('''SELECT l.*,dl.record_id,dl.directory_id FROM decision_label dl
-            JOIN label l ON (l.exam_id,l.label_id)=(dl.exam_id,dl.label_id)
-            JOIN decision d ON (d.exam_id,d.record_id)=(dl.exam_id,dl.record_id)
-            WHERE dl.exam_id=%s AND (%s::text IS NULL OR d.uid=%s) ORDER BY l.label_id''',
-            (exam,student_uid,student_uid)).fetchall():
+        for row in label_db.exam_selected_labels(conn, exam, student_uid):
             labels.setdefault(row['record_id'],[]).append(row)
         result={}
         for row in rows:
@@ -184,8 +173,7 @@ def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionI
         # Save through the same permission/label checks and one transaction as the workflow service.
         state=svc._workspace(conn,exam,student_uid,qid,role,writing=True)
         svc.save(exam,student_uid,qid,labels,body.comment,state['grade_token'],regrade=bool(state['decision']))
-        conn.execute('UPDATE decision SET internal_note=%s,updated_at=clock_timestamp() WHERE exam_id=%s AND uid=%s AND qid=%s',
-                     (body.internal_note,exam,student_uid,qid))
+        decision_db.set_internal_note(conn, body.internal_note, exam, student_uid, qid)
         return decision(svc,exam,student_uid,qid)
 
 

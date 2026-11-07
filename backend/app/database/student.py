@@ -57,18 +57,54 @@ class Student:
       raise
 
   def add_student_to_course(self, course_ID: int, UID: str) -> bool:
-    """Enroll an existing student; return False for an existing enrollment."""
-    try:
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """
-          INSERT INTO enrollment (course_id, uid)
-          VALUES (%s, %s)
-          ON CONFLICT (course_id, uid) DO NOTHING
-          """,
-          (course_ID, UID)
-        )
-        return cursor.rowcount > 0
-    except psycopg.Error as error:
-      logger.exception("enroll student failed", extra={"extra": {"UID": UID, "course_ID": course_ID}})
-      raise
+    """Enroll an existing student using the common persistence function."""
+    with self.get_connection() as conn:
+      return enroll_student(conn, course_ID, UID) > 0
+
+
+def lock_exam_enrollment(conn, exam_id, uid) -> dict | None:
+    """Lock exam enrollment; return None when missing."""
+    return conn.execute(
+        """SELECT en.uid FROM enrollment en JOIN assignment e USING(course_id)
+        WHERE e.exam_id=%s AND en.uid=%s FOR SHARE OF en""",
+        (exam_id, uid),
+    ).fetchone()
+
+
+def upsert_roster_student(conn, uid, name, email) -> dict | None:
+    """Upsert roster student; return None when missing."""
+    return conn.execute(
+        """INSERT INTO student (uid, name, email) VALUES (%s, %s, %s)
+        ON CONFLICT (uid) DO UPDATE SET
+        name = EXCLUDED.name,
+        email = COALESCE(EXCLUDED.email, student.email)
+        RETURNING uid, name, directory_id, email""",
+        (uid, name, email),
+    ).fetchone()
+
+
+def enroll_with_section(conn, course_id, uid, section) -> int:
+    """Enroll with section; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO enrollment (course_id, uid, section) VALUES (%s, %s, %s)
+        ON CONFLICT (course_id, uid) DO UPDATE SET
+        section = COALESCE(EXCLUDED.section, enrollment.section)""",
+        (course_id, uid, section),
+    ).rowcount
+
+
+def enroll_student(conn, course_id, uid) -> int:
+    """Enroll student; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO enrollment (course_id, uid) VALUES (%s, %s) ON CONFLICT DO NOTHING""",
+        (course_id, uid),
+    ).rowcount
+
+
+def seed_student(conn, uid, name, directory_id) -> int:
+    """Seed student; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO student (uid, name, directory_id) VALUES (%s, %s, %s)
+        ON CONFLICT (uid) DO UPDATE SET name = EXCLUDED.name, directory_id = EXCLUDED.directory_id""",
+        (uid, name, directory_id),
+    ).rowcount

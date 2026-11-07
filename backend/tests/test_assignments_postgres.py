@@ -79,8 +79,18 @@ def test_course_and_assignment_endpoints_read_the_database(api):
     assert client.get('/api/assignments/nope/roster').status_code == 404
 
 
-def test_create_assignment(api):
+
+@pytest.fixture
+def instructor_api(api):
+    """Same course membership as Alice, with the role required for assignment edits."""
     client, database = api
+    with database.get_connection() as conn:
+        conn.execute("UPDATE staff SET role='instructor' WHERE directory_id='alice'")
+    return client, database
+
+
+def test_create_assignment(instructor_api):
+    client, database = instructor_api
     made = client.post('/api/courses/1/assignments', json={'title': 'Final Exam', 'kind': 'final exam', 'due': '2026-12-16'})
     assert made.status_code == 201, made.text
     assert (made.json()['id'], made.json()['kind'], made.json()['short']) == ('final-exam', 'final exam', 'final-exam')
@@ -97,8 +107,8 @@ def test_create_assignment(api):
         assert conn.execute("SELECT count(*) AS n FROM assignment WHERE course_id=1").fetchone()['n'] == 6
 
 
-def test_edit_assignment(api):
-    client, _ = api
+def test_edit_assignment(instructor_api):
+    client, _ = instructor_api
     edited = client.patch('/api/assignments/quiz-2', json={'title': 'Quiz Two', 'kind': 'lab', 'due': '2026-11-01'})
     assert edited.status_code == 200, edited.text
     assert (edited.json()['id'], edited.json()['title'], edited.json()['kind'], edited.json()['due'],
@@ -112,8 +122,8 @@ def test_edit_assignment(api):
     assert client.get('/api/assignments/quiz-2').json()['title'] == 'Quiz Two'
 
 
-def test_grading_uses_the_database_assignment_and_never_overwrites_it(api):
-    client, database = api
+def test_grading_uses_the_database_assignment_and_never_overwrites_it(instructor_api):
+    client, database = instructor_api
     client.patch('/api/assignments/quiz-1', json={'title': 'Edited title'})
     assert client.get('/api/assignments/quiz-1/queue').status_code == 200  # resolve_exam finds the row
     assert client.get('/api/assignments/nope/queue').status_code == 404
@@ -176,8 +186,8 @@ def test_upload_roster_csv(api):
     assert res.status_code == 422
 
 
-def test_slugs_start_with_a_letter(api):
-    client, database = api
+def test_slugs_start_with_a_letter(instructor_api):
+    client, database = instructor_api
     assert client.post('/api/courses/1/assignments', json={'title': '2024'}).json()['id'] == 'assignment-2024'
     assert client.post('/api/courses/1/assignments', json={'title': '!!!'}).json()['id'] == 'assignment'
     assert client.post('/api/courses/1/assignments', json={'title': 'x', 'slug': '2024'}).status_code == 422
@@ -190,3 +200,75 @@ def test_add_exam_makes_a_slug(api):
     with database.get_connection() as conn:
         slugs = {r['exam_id']: r['slug'] for r in conn.execute('SELECT exam_id, slug FROM assignment')}
     assert (slugs[first], slugs[second]) == ('midterm-1', 'midterm-1-2')
+
+
+def test_assignment_queries_return_complete_rows(api):
+    """The replacement for the old two-column getter keeps setup/release fields."""
+    from app.database import exam
+
+    _, database = api
+    with database.get_connection() as conn:
+        conn.execute("UPDATE assignment SET blank_pdf='blank.pdf', answer_key_pdf='key.pdf', total_points=42 WHERE exam_id=1")
+        rows = exam.get_course_exams(conn, [1])
+        assert [r['slug'] for r in rows] == ['quiz-1', 'quiz-2', 'notes']
+        row = next(r for r in rows if r['exam_id'] == 1)
+        assert row == exam.get_assignment(conn, 1)
+        assert (row['blank_pdf'], row['answer_key_pdf'], row['total_points']) == ('blank.pdf', 'key.pdf', 42)
+        assert {'status', 'released_at', 'course_id', 'due', 'kind', 'short'} <= row.keys()
+        assert exam.get_course_exams(conn, []) == []
+        assert exam.get_assignment(conn, 9999) is None
+
+
+def test_course_edits_use_current_schema_and_preserve_omitted_fields(api):
+    client, _ = api
+    response = client.patch('/api/courses/1', json={'title': ' Course title ', 'image': ' /banner.png '})
+    assert response.status_code == 200, response.text
+    assert (response.json()['title'], response.json()['image']) == ('Course title', '/banner.png')
+    response = client.patch('/api/courses/1', json={'code': ' NEW ', 'image': None})
+    assert (response.json()['code'], response.json()['image'], response.json()['title']) == ('NEW', '/banner.png', 'Course title')
+    response = client.patch('/api/courses/1', json={'image': ' ', 'title': ''})
+    assert (response.json()['image'], response.json()['title']) == (None, None)
+    assert client.patch('/api/courses/1', json={'code': ' '}).status_code == 422
+    assert client.patch('/api/courses/2', json={'title': 'Denied'}).status_code == 403
+
+
+def test_assignment_write_permissions_remain_instructor_only(api):
+    client, _ = api
+    assert client.post('/api/courses/1/assignments', json={'title': 'Denied'}).status_code == 403
+    assert client.patch('/api/assignments/quiz-1', json={'title': 'Denied'}).status_code == 403
+    assert client.delete('/api/assignments/quiz-1').status_code == 403
+    assert client.get('/api/assignments/quiz-1').json()['title'] == 'Quiz 1'
+
+
+def test_conn_functions_follow_the_outer_transaction_and_audit(api):
+    """A failure after multiple domain writes must roll back every change and audit row."""
+    from app.database import course, exam, staff
+
+    _, database = api
+    with pytest.raises(RuntimeError, match='abort'):
+        with database.audit_context(actor_ID='alice'), database.transaction(), database.get_connection() as conn:
+            created = course.create_course(conn, 'ROLLBACK', 'Fall', 'Temporary')
+            staff.add_course_member(conn, created['course_id'], 'alice')
+            exam.create_assignment(conn, created['course_id'], 'Temporary', None, 'rollback-only', 'quiz', None)
+            raise RuntimeError('abort')
+    with database.get_connection() as conn:
+        assert course.course_by_code(conn, 'ROLLBACK') is None
+        assert conn.execute("SELECT count(*) AS n FROM assignment WHERE slug='rollback-only'").fetchone()['n'] == 0
+        assert conn.execute("SELECT count(*) AS n FROM audit_outbox WHERE new_data->>'code'='ROLLBACK'").fetchone()['n'] == 0
+
+
+def test_domain_updates_reject_unknown_columns_before_writing(api):
+    from app.database import course, exam
+
+    _, database = api
+    with database.get_connection() as conn:
+        for update, fields in (
+            (course.update_course_columns, {'title': 'Changed', 'role': 'instructor'}),
+            (exam.update_assignment_columns, {'exam_name': 'Changed', 'slug': 'renamed'}),
+        ):
+            with pytest.raises(ValueError, match='Unsupported update fields'):
+                update(conn, 1, fields)
+        assert course.update_course_columns(conn, 1, {}) == 0
+        assert exam.update_assignment_columns(conn, 1, {}) == 0
+        assert course.course_row(conn, 1)['title'] is None
+        assert exam.get_assignment(conn, 1)['exam_name'] == 'Quiz 2'

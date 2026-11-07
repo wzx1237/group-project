@@ -78,3 +78,23 @@ class Label:
         self._lock_decision(cursor, record, exam_ID)
         self._recalculate_score(cursor, record, exam_ID)
       return changed
+
+
+def lock_question_labels(conn, exam_id, qid) -> list[dict]:
+    """Read label definitions under shared locks so grading sees a stable rubric."""
+    return conn.execute(
+        """SELECT l.* FROM label l JOIN rubric_label rl USING(exam_id,label_id)
+        WHERE rl.exam_id=%s AND rl.qid=%s ORDER BY l.label_id FOR SHARE OF l""",
+        (exam_id, qid),
+    ).fetchall()
+
+
+def exam_selected_labels(conn, exam_id, uid) -> list[dict]:
+    """Exam selected labels; return rows in query order."""
+    return conn.execute(
+        """SELECT l.*,dl.record_id,dl.directory_id FROM decision_label dl
+        JOIN label l ON (l.exam_id,l.label_id)=(dl.exam_id,dl.label_id)
+        JOIN decision d ON (d.exam_id,d.record_id)=(dl.exam_id,dl.record_id)
+        WHERE dl.exam_id=%s AND (%s::text IS NULL OR d.uid=%s) ORDER BY l.label_id""",
+        (exam_id, uid, uid),
+    ).fetchall()

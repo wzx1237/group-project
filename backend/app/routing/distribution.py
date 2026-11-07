@@ -16,6 +16,11 @@ from app import assignments, config, cover_templates, rosters, status, store, wo
 from app.routing.auth import current_user
 from app.processing import TEMPLATE_DIR, match_upload, process_upload
 from app.services.page_crop import save_crop
+from app.database import course as course_db
+from app.database import decision as decision_db
+from app.database import exam as exam_db
+from app.database import staff as staff_db
+from app.database import student as student_db
 
 def _fail_interrupted(db: dict) -> None:
     assignments_list = db.get("assignments", []) if isinstance(db, dict) else []
@@ -158,10 +163,10 @@ def _resolve_course_id(conn, course_id: int | str) -> int:
     cid = None
     if isinstance(course_id, int) or (isinstance(course_id, str) and course_id.isdigit()):
         cid = int(course_id)
-        row = conn.execute("SELECT course_id FROM course WHERE course_id = %s", (cid,)).fetchone()
+        row = course_db.course_id_row(conn, cid)
         if row:
             return row["course_id"]
-    row = conn.execute("SELECT course_id FROM course WHERE lower(code) = lower(%s)", (str(course_id),)).fetchone()
+    row = course_db.course_by_code(conn, str(course_id))
     if row:
         return row["course_id"]
     if cid is not None:
@@ -170,15 +175,6 @@ def _resolve_course_id(conn, course_id: int | str) -> int:
 
 
 def _add_students_to_course(conn, course_id: int, students: list[dict]) -> list[dict]:
-    has_section = True
-    try:
-        conn.execute("SAVEPOINT check_sec")
-        conn.execute("SELECT section FROM enrollment LIMIT 0")
-        conn.execute("RELEASE SAVEPOINT check_sec")
-    except Exception:
-        conn.execute("ROLLBACK TO SAVEPOINT check_sec")
-        has_section = False
-
     saved = []
     for s in students:
         uid = str(s.get("uid") or "").strip()
@@ -191,27 +187,12 @@ def _add_students_to_course(conn, course_id: int, students: list[dict]) -> list[
         if not name:
             raise HTTPException(422, "Enter the student's name")
 
-        student = conn.execute(
-            """INSERT INTO student (uid, name, email) VALUES (%s, %s, %s)
-               ON CONFLICT (uid) DO UPDATE SET
-                 name = EXCLUDED.name,
-                 email = COALESCE(EXCLUDED.email, student.email)
-               RETURNING uid, name, directory_id, email""",
-            (uid, name, email),
-        ).fetchone()
+        student = student_db.upsert_roster_student(conn, uid, name, email)
 
-        if has_section and section:
-            conn.execute(
-                """INSERT INTO enrollment (course_id, uid, section) VALUES (%s, %s, %s)
-                   ON CONFLICT (course_id, uid) DO UPDATE SET
-                     section = COALESCE(EXCLUDED.section, enrollment.section)""",
-                (course_id, uid, section),
-            )
+        if section:
+            student_db.enroll_with_section(conn, course_id, uid, section)
         else:
-            conn.execute(
-                "INSERT INTO enrollment (course_id, uid) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (course_id, uid),
-            )
+            student_db.enroll_student(conn, course_id, uid)
         saved.append({**student, "section": section})
     return saved
 
@@ -270,11 +251,7 @@ def add_student(
     db = request.app.state.grading_db
     with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
         cid = _resolve_course_id(conn, course_id)
-        staff = conn.execute(
-            """SELECT s.role FROM course_staff cs JOIN staff s USING (directory_id)
-               WHERE cs.course_id = %s AND cs.directory_id = %s""",
-            (cid, actor),
-        ).fetchone()
+        staff = staff_db.course_role(conn, cid, actor)
         if staff is None:
             raise HTTPException(404, "Course not found")
         if staff["role"] != "instructor":
@@ -297,11 +274,7 @@ async def upload_roster_csv(
     db = request.app.state.grading_db
     with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
         cid = _resolve_course_id(conn, course_id)
-        staff = conn.execute(
-            """SELECT s.role FROM course_staff cs JOIN staff s USING (directory_id)
-               WHERE cs.course_id = %s AND cs.directory_id = %s""",
-            (cid, actor),
-        ).fetchone()
+        staff = staff_db.course_role(conn, cid, actor)
         if staff is None:
             raise HTTPException(404, "Course not found")
         if staff["role"] != "instructor":
@@ -393,10 +366,7 @@ def get_assignment(assignment: AssignmentRecord):
     return {**_with_uploads(assignment, store.load()), "cover_template": (TEMPLATE_DIR / f"{assignment['id']}.json").exists()}
 
 
-SAVE_FILE_PATH = {
-    "blank_exam": "UPDATE assignment SET blank_pdf = %s WHERE exam_id = %s",
-    "answer_key": "UPDATE assignment SET answer_key_pdf = %s WHERE exam_id = %s",
-}
+
 
 
 @router.post("/api/assignments/{assignment_id}/templates", status_code=201)
@@ -410,7 +380,7 @@ async def upload_template(request: Request, assignment: AssignmentRecord, user: 
         # The blank exam fixes where answers sit on every scan; the answer key can change any time before closing.
         workflow.require(conn, assignment["exam_id"], ("draft",) if kind == "blank_exam" else workflow.OPEN,
                          "Replacing the blank exam" if kind == "blank_exam" else "Replacing the answer key")
-    if kind not in SAVE_FILE_PATH:
+    if kind not in ("blank_exam", "answer_key"):
         raise HTTPException(422, "type must be blank_exam or answer_key")
     max_bytes = config.load()["max_upload_mb"] * 1024 * 1024
     pdf = await file.read(max_bytes + 1)
@@ -424,7 +394,7 @@ async def upload_template(request: Request, assignment: AssignmentRecord, user: 
     except ValueError as error:
         raise HTTPException(422, str(error))
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
-        conn.execute(SAVE_FILE_PATH[kind], (path, assignment["exam_id"]))
+        exam_db.save_template_path(conn, kind, path, assignment['exam_id'])
     return {"type": kind, "path": path, "cover_template": (TEMPLATE_DIR / f"{assignment['id']}.json").exists()}
 
 
@@ -564,9 +534,7 @@ def _students_in(upload: dict) -> list[str]:
 
 def _refuse_if_graded(conn, assignment: dict, uids: list[str]) -> None:
     """409 if any of these students already has a saved grade on this assignment: their scan has to stay."""
-    if conn is not None and conn.execute(
-        "SELECT 1 FROM decision WHERE exam_id = %s AND uid = ANY(%s) LIMIT 1", (assignment["exam_id"], uids)
-    ).fetchone():
+    if conn is not None and decision_db.has_saved_decisions(conn, assignment['exam_id'], uids):
         raise HTTPException(409, "Grading has started for this student, so the exam cannot be unassigned")
 
 

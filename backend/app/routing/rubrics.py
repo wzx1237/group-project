@@ -1,4 +1,3 @@
-
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +9,8 @@ from app import workflow
 from app.grading.service import amount, token
 
 from app.routing.auth import current_user
+from app.database import grading as grading_db
+from app.database import rubric as rubric_db
 
 router = APIRouter(prefix="/api/assignments/{assignment_id}/rubric", dependencies=[Depends(current_user)])
 
@@ -87,7 +88,7 @@ def criterion(row):
 def get_rubric(assignment_id: str, svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
-        rows = conn.execute('SELECT qid FROM rubric WHERE exam_id=%s ORDER BY qid', (exam,)).fetchall()
+        rows = rubric_db.question_ids(conn, exam)
         questions = [question(svc,exam,r['qid']) for r in rows]
         # A content revision preserves the frontend shape without restoring relationship versions.
         version = int(token(questions)[1:9],16)
@@ -100,10 +101,7 @@ def add_question(assignment_id: str, body: QuestionIn, svc: Service):
     with svc.access(exam) as (conn, _):
         workflow.require(conn, exam, ('draft',), 'Adding a question')
         svc.db.add_question(body.qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
-        conn.execute("""INSERT INTO mapping(exam_id,uid,qid,status)
-            SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
-            JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-            WHERE p.exam_id=%s ON CONFLICT DO NOTHING""", (body.qid,exam))
+        grading_db.seed_question_mappings(conn, body.qid, exam)
         return question(svc,exam,body.qid)
 
 
@@ -136,7 +134,7 @@ def add_criterion(assignment_id: str,qid: str,body: CriterionIn,svc: Service):
         label = svc.db.add_label(body.title,body.description,amount(body.deduction),exam_ID=exam)
         svc.db.add_rubric_label(qid,label,exam_ID=exam)
         # A new criterion requires review; it must not select itself on old answers.
-        conn.execute("UPDATE mapping SET status='Regrade' WHERE exam_id=%s AND qid=%s",(exam,qid))
+        grading_db.mark_question_for_regrade(conn, exam, qid)
         return criterion(svc.db.get_label(label,exam_ID=exam))
 
 

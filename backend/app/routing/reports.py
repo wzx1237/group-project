@@ -10,6 +10,8 @@ from app.grading.exams import resolve_exam
 from app.grading.reports import exam_reports, filename, points, report_pdf
 from app.routing.auth import current_user
 from app.routing.grading import Service
+from app.database import exam as exam_db
+from app.database import reports as reports_db
 
 router = APIRouter(prefix='/api/assignments/{assignment_id}', dependencies=[Depends(current_user)])
 
@@ -20,7 +22,7 @@ def release_status(assignment_id: str, svc: Service):
     PUT /api/assignments/{assignment_id}/status."""
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
-        return conn.execute('SELECT released_at, status FROM assignment WHERE exam_id=%s', (exam,)).fetchone()
+        return exam_db.release_status(conn, exam)
 
 
 @router.get('/reports/{student_uid}.pdf')
@@ -63,8 +65,7 @@ def grades_csv(assignment_id: str, svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
         info, reports = exam_reports(conn, exam)
-        students = conn.execute('''SELECT s.uid, s.name, s.email FROM student s JOIN enrollment en USING(uid)
-            JOIN assignment e ON e.course_id=en.course_id WHERE e.exam_id=%s ORDER BY s.name, s.uid''', (exam,)).fetchall()
+        students = reports_db.enrolled_contacts(conn, exam)
     graded = {r['uid']: r['total'] for r in reports if info['questions'] and r['graded'] == info['questions']}
     out = io.StringIO()
     writer = csv.writer(out)

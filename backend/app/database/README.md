@@ -1,153 +1,94 @@
-# Gradeflow Database v2: Current State and JSONL Audit History
+# Gradeflow database layer
 
-This release edits the eleven newly uploaded v2 Python files. It retains the existing Database/mixin package structure, the connection pool maximum of 30, every existing function header/default/return annotation, the signed deduction scoring rule, and the original public import entry point.
+业务 SQL 集中在此目录。调用方使用 `fn(conn, ...)`，同一请求的多个函数共享同一个连接和事务。
+本次重构以 `workspace_11_4` 的 `59cc9a1` 为基线；方法去留和后续需求见 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)，当前签名见 [database_public_methods.md](database_public_methods.md)。
 
-The source schema is the latest available unified_schema (1).sql from the preceding work; no SQL attachment was supplied with this v2 request. All business columns/foreign keys remain except for the relationship version columns and their primary-key components. The single added table, audit_outbox, is a temporary delivery queue rather than the long-term history store.
+## 分层与选择
 
-## Files and Changes
+- `app/routing`：请求校验、身份、HTTP 状态和响应。
+- `app/assignments.py`、`app/workflow.py`、`app/grading`：业务规则、状态流转、并发令牌、文件处理和响应整形。
+- `app/database` 的模块函数：SQL、查询行、受限字段更新和锁。函数使用调用方传来的 `conn`，不创建池，不 commit / rollback，也不引入 FastAPI。
+- `Database`：保留共享池、事务复用、审计上下文，以及已验证的评分 / rubric / label 写入口。部分兼容方法已转调共用函数，避免两份 SQL。
+- `app/db.py`：启动时运行编号 SQL 迁移并创建应用池；这里的迁移 SQL 属于基础设施，保留在原处。
 
-- database/: the original modules plus one new module, audit.py.
-- database.py within that directory is the uploaded database(2).py restored to its package import filename.
-- schemas.sql: full current-state schema for a new, empty database.
-- migrate_v2.sql: guarded one-time migration from the previous versioned schema.
-- database_public_methods.md: English reference for all public methods.
-- test_database.py and test_audit.py: regression, audit-delivery, and migration tests.
-- expected_headers.json: reference signatures from the newly uploaded v2 files.
-- testdata/legacy_schema.sql: the previous schema, used only by migration tests.
+建议继续使用普通函数扩展数据访问。暂时保留 `Database` 的事务和审计生命周期，避免为了去掉类而重新实现一套连接管理。以后迁移剩余写方法时，先抽出接收 conn 的完整原子操作，再把旧方法做成轻量适配器。
 
-No deployed database was changed. Do not run schemas.sql against existing tables. Apply the migration before using this package with an old database.
+## 模块索引
 
-## Why Remove Relationship version?
+| 模块 | 负责内容 |
+| --- | --- |
+| `course.py` / `exam.py` | 课程、完整 assignment 行、slug、作业创建编辑、模板引用和作业锁 |
+| `staff.py` / `student.py` / `studentpaper.py` | 成员与 enrollment、学生导入、扫描件同步、路径查询、保留已有成绩的清理 |
+| `roster.py` | 按 course_id 或 code / term 读取 roster，包含当前 section / status |
+| `grading.py` | 幂等 mapping 初始化、队列、认领、释放、重新分配、重评标记 |
+| `workflow.py` | 学生状态同步、准备条件、进度汇总和状态持久化 |
+| `rubric.py` / `label.py` / `decision.py` | rubric 与 label 查询、评分与标签集写入、分数重算 |
+| `reports.py` | 报告所需原始行；汇总、成绩发布规则和 PDF 输出仍在服务层 |
+| `queries.py` | 受限字段更新：字段白名单、Identifier 转义和值参数化 |
+| `database.py` / `audit.py` | 池、事务复用、数据库审计触发器检查、提交后 JSONL 交付 |
+| `legacy_reference.py` | 完全注释的旧兼容分支，仅供参考，不导入执行 |
 
-Rubric_Label and Decision_Label now hold only the current set. Their keys are respectively (exam_ID, QID, Label_ID) and (exam_ID, record_ID, Label_ID). Old images are recorded in audit files before their source rows disappear from the current tables.
-
-A version column in those current-only rows no longer selects history. It also does not provide optimistic concurrency protection because the existing method headers do not accept an expected version. Updating just one row can create mixed versions; deleting the final row loses any counter derived from MAX(version). Keeping that counter would add coordination without supporting a current requirement.
-
-Parent Rubric/Decision row locks still serialize modifications to each label set, including empty sets. If the client later needs named rubric releases or optimistic conflict detection, add an explicit parent revision and expected-revision API for that separate purpose. This release adds neither.
-
-Current tables no longer retain old relationship versions. Audit rows include their own UUID event_id, transaction_id and occurrence timestamp; these identify changes rather than pretending that each current relationship row is a history version.
-
-## JSON Files Are the History Store
-
-Set GRADEFLOW_AUDIT_DIR before constructing Database. The default directory is logs/audit under the application's working directory.
+## 使用方式
 
 ```python
-import os
-from database import Database, config_logging
+from app.database import course, exam
 
-os.environ['GRADEFLOW_AUDIT_DIR'] = '/durable-storage/gradeflow/audit'
-config_logging(log_file='logs/runtime.jsonl')
-
-db = Database(password='your_password')
-try:
-    with db.audit_context(actor_ID='alice', request_ID='request-123'):
-        db.update_student_paper(123456789, comments='Checked', exam_ID=1)
-    db.flush_audit()
-finally:
-    db.close()
+# database 是应用 lifespan 中的 Database.from_pool(pool)。
+with database.audit_context(actor_ID=actor), database.transaction():
+    with database.get_connection() as conn:
+        courses = course.courses_for_staff(conn, actor)
+        rows = exam.get_course_exams(conn, [c["course_id"] for c in courses])
+        exam.update_assignment_columns(conn, exam_id, {"exam_name": "Quiz Two", "due": None})
 ```
 
-Use a path appropriate to the deployment, including a Windows path when applicable. Configure application workers consistently and keep the audit directory on durable storage with backups. Daily audit-YYYY-MM-DD.jsonl files are not automatically rotated away or deleted. config_logging's rotating files are runtime diagnostics and must not be treated as retained audit history.
+`conn` 需要来自使用 `dict_row` 的连接。读函数返回原始 dict / list[dict]；未找到的单行读取返回 None，列表读取返回 []。写函数通常返回 rowcount，带 RETURNING 的查询返回行，具体见函数签名。Decimal 和 datetime 留给服务层序列化。
 
-Existing method headers have not changed. The only new public methods are:
+一般请求通过 `Database.get_connection()` / `transaction()` 获取连接，保留审计元数据、模式检查和提交后交付；不要为了调用一个函数新建池。seed 和 CLI 仍管理各自的引导连接。函数本身不保证已经做过权限检查，服务必须先验证用户属于对应课程。
 
-- audit_context(actor_ID: str | None = None, request_ID: str | None = None): attach caller/request metadata for the context; pass the authenticated identity from the backend.
-- flush_audit(batch_size: int = 500) -> int: export pending committed rows and return the acknowledged count; explicit calls raise delivery errors for the operator to handle.
+## SQL 与并发约定
 
-Private helpers centralize file locking, delivery, row locking, current-score recalculation, and schema checks. They do not introduce another connection pool or change the existing domain modules.
+- 所有值使用 psycopg 参数绑定；动态列只由领域层白名单产生并以 Identifier 引用。
+- 不向数据层传 SQL 条件或锁字符串；readiness 和 edit 是有限的业务选项。
+- mapping 初始化以 ON CONFLICT DO NOTHING 保留已有 owner 和状态。
+- 保留服务原有的作业、成员、rubric、label、mapping、decision 锁顺序和 SKIP LOCKED 行为。
+- 每个请求保持短事务；HTTP 乐观并发令牌仍在持锁期间校验。
+- `get_course_exams(conn, course_ids)` 和 `get_assignment(conn, exam_id)` 返回完整 assignment 行，包含 blank_pdf、answer_key_pdf、total_points、status 和 released_at。
+- assignment 编辑只允许 exam_name、kind、due、short；course 编辑只允许 code、term、title、image。空更新不写入；允许字段的 None 表示 SQL NULL，HTTP 层保留各接口原来的 omitted / null 规则。
 
-## Commit and Delivery Rules
+## 分数同步与未来方法
 
-1. PostgreSQL AFTER row triggers capture INSERT/UPDATE/DELETE old/new row images on all thirteen business tables. Raw SQL through public connections and foreign-key cascades are covered too.
-2. The business change and its outbox record commit in one database transaction. A failed business statement or failed capture rolls back both. No failed/rolled-back change is exported as a committed audit event.
-3. Only after commit does the package append JSON lines, flush and fsync the file, then delete acknowledged outbox rows. The directory entry is also fsynced on POSIX. Events remain queued if file delivery fails.
-4. Automatic delivery failure is logged but does not raise a misleading business-write failure after a successful commit. A later successful operation, explicit flush_audit(), or normal close retries pending delivery. Schedule explicit retries/monitor SELECT COUNT(*) FROM audit_outbox if the service can remain idle after an outage.
-5. A crash after file append but before queue acknowledgement may replay complete lines. Delivery is at least once, not exactly once; deduplicate consumers by the UUID event_id. Its identity remains stable across retries. Queue sequence order is not a guarantee of cross-transaction commit order.
+现有评分规则没有改变：add 从 0 起，deduct 从题目满分起，加上选中 label 的有符号 deduction，再限制到 0 与满分之间。无选中标签时 score 为 NULL，表示尚未评分。
 
-The exporter serializes cooperating writers with a directory lock. It repairs only an unterminated trailing line left by an interrupted append; the unacknowledged event can then be retried. Complete old audit lines are never rewritten. Do not manually edit audit files or delete unexported queue records.
+`Database.edit_label` / `remove_label` 和 `edit_question` 仍通过 `_lock_decision`、`_recalculate_score` 同步受影响的成绩；这些方法为之后改 deduction、改满分、同步成绩保留。业务上的重评状态与即时分数重算是不同操作，继续由原有服务协调。
 
-The queue is emptied after successful delivery; no permanent duplicate audit table is maintained. Its old/new images may temporarily remain in the database while delivery is pending. This is intentional protection against a disk outage, not a continuation of soft deletion.
+没有跨文件调用但有明确用途的方法（批量标签集、单标签增删、学生 / staff 维护、试卷备注等）在 REFACTOR_PLAN 中逐项列出。恢复旧关系编辑时必须考虑分数同步，不应直接恢复绕过现有编辑入口的 SQL。
 
-## Audit Event Format
+## 停用与兼容
 
-Each JSON line contains:
+以下未被现行代码调用的旧方法已停用，原始实现保留为所在模块内的注释：
 
-| Field | Meaning |
-|---|---|
-| event_id | Stable UUID used for replay deduplication. |
-| timestamp | UTC time the row change was captured; not a claimed commit-order timestamp. |
-| database, schema, table | Origin of the affected row. |
-| transaction_id | PostgreSQL transaction ID, serialized as text to avoid wide-integer client precision loss. |
-| operation | INSERT, UPDATE, DELETE, or migration BASELINE. |
-| row_key | Primary-key fields identifying the affected row. |
-| old_data | Full old row, or null for an insertion/baseline. |
-| new_data | Full new row, or null for a deletion. |
-| actor_id | Backend-supplied authenticated user, or null when not supplied. |
-| request_id | Supplied request ID or a generated correlation ID. |
-| db_user | PostgreSQL session role, distinct from the end user. |
+| 旧方法 | 当前替代 |
+| --- | --- |
+| `Exam.get_course_exams` | `exam.get_course_exams(conn, course_ids)`，返回完整 assignment 行 |
+| `Exam.get_exam` | `exam.get_assignment(conn, exam_id)` |
+| `Staff.get_grader` | `Database.get_staff` |
+| `Decision.get_grading_decision` | `reports.exam_decisions` 与现行报告逻辑 |
+| `Decision.get_student_total_score` | 现行报告汇总，保留未完成 / no-show 语义 |
+| `Rubric.update_rubric` | 现行 question / label 编辑入口，包含分数同步 |
 
-All steps of a multi-row replacement share transaction_id. A single transaction can contain several row events, including intermediate score/comment updates; those rows are one committed transaction, not separate commits. NUMERIC values are serialized by PostgreSQL and exported as its JSON text, avoiding a Python float conversion in the writer.
+roster 的 section / status 探测和接口中的运行时 ALTER TABLE 已停用；启动迁移 009、011、012 保证字段存在。旧兼容分支完整保存在 `legacy_reference.py` 注释中。恢复前应重新检查模式与测试。
 
-No actor is guessed from a Grader argument. The backend still must authenticate callers and enforce assignment permissions. File history is not cryptographic tamper evidence, and privileged database/filesystem administrators can bypass application protections.
+## 迁移、审计和验证
 
-## Behavior Fixes
+本次没有新增或修改 SQL 迁移。启动使用 `app.db.migrate`；完整 schema 以 `app/migrations/*.sql` 为准。此目录旧说明提到的 schemas.sql、migrate_v2.sql 和独立审计测试文件并不随当前仓库提供，不应按旧说明操作。
 
-- The logging formatter now calls super().__init__ correctly, reads structured extras with getattr, and formats exception stacks even when extras are absent; it does not mutate LogRecord extras across handlers.
-- Current rubric/decision label getters again return label title/description/deduction information, plus current relationship identifiers, with no version field.
-- First label insertion works. Duplicate single additions do not create duplicate relationships. Batch lists reject duplicates or mismatched graders.
-- Batch replacement physically deletes previous relationships; deleting the final relationship and clearing a set are valid. Label-derived score becomes zero for an empty selection.
-- The target Rubric/Decision parent row is locked across the whole operation, and all SQL steps use the same transaction.
-- Newly supplied graders are checked against the exam course; the signed deduction sum remains unchanged.
-- update_student_paper correctly handles PDF-only, comment-only, and combined updates; no matching paper returns False. Supplying neither field raises ValueError; None means omitted for this method, while an empty string clears a comment.
-- update_decision(comments=None) explicitly clears its comment, retaining the uploaded v2 semantics.
-- Existing read/add course, student, staff, exam, and label methods retain their signatures and are covered automatically by database audit triggers.
+审计仍由 PostgreSQL 触发器将修改与 outbox 同事务写入，提交后输出到 `GRADEFLOW_AUDIT_DIR`（默认 logs/audit）。交付失败保留待重试事件；外部消费者按 event ID 去重。`audit_context` 传入身份，`flush_audit` 可显式重试；保留现有故障处理行为。
 
-## Installation and Migration
-
-Use Python 3.10+ and PostgreSQL with built-in gen_random_uuid (PostgreSQL 13+; tests used PGlite's PostgreSQL engine).
+运行测试（使用独立的 PostgreSQL 测试数据库）：
 
 ```bash
-python -m pip install "psycopg[binary,pool]"
+cd backend
+GRADEFLOW_TEST_DSN=postgresql://... .venv/bin/python -m pytest -q
 ```
 
-For a new database, execute schemas.sql once. For an existing database using the prior versioned schema, stop writers, back up the database, and execute migrate_v2.sql once.
-
-The migration saves BASELINE images of all existing business rows and every legacy relationship version into the delivery queue before reducing relationships to their current set. After migration, call flush_audit() and confirm the queue is empty and the JSONL files are present. Original manual scores/comments are retained; migration does not silently regrade historical decisions.
-
-Mixed version values are ambiguous because this upload partially changes the old model. The script refuses to guess. In the same connection, explicitly choose the interpretation you know matches the existing data:
-
-```sql
--- Original soft-delete snapshots: the group's greatest version is current.
-SET gradeflow.legacy_relation_mode = 'latest';
--- Then execute migrate_v2.sql in this same session.
-```
-
-Or, for a database that already contains only current relationships but has inconsistent per-row counters from the partial v2 update:
-
-```sql
-SET gradeflow.legacy_relation_mode = 'current';
--- Then execute migrate_v2.sql in this same session.
-```
-
-The current mode retains the union of present labels and uses the greatest stored version when the same label appears more than once. Both modes preserve all original rows in BASELINE JSON images. Without an explicit mode, any group with multiple versions aborts and the whole migration rolls back. The chosen session mode is cleared after a successful migration to avoid accidental reuse. Do not use current mode for genuine full historical snapshots unless their union is actually the intended current set.
-
-If your deployed schema was separately edited, compare it with testdata/legacy_schema.sql first; the migration targets that known structure. It is not an automatic merger of unknown schemas. The package checks that audit triggers/outbox are present before executing public business SQL, and refuses unprotected operation. TRUNCATE is rejected because it cannot provide per-row OLD images; use auditable DELETE for that case. Administrative DROP/ALTER and deliberate privileged bypass are outside this application audit guarantee.
-
-If a different database owner installs the schema, grant the runtime role the required business-table privileges plus SELECT/INSERT/DELETE on audit_outbox, sequence usage, and trigger-function execution as appropriate. Do not disable capture triggers to work around a permission error: capture failure intentionally prevents an unaudited business commit.
-
-## Validation
-
-33 automated tests passed against PostgreSQL through PGlite and psycopg. They include regression behavior, all thirteen audited tables, original header preservation, before/after content, actor/request isolation, no audit event on rollback, no business commit on capture failure, file outage/retry, stable replay IDs, interrupted-line recovery, raw writes/cascades, missing-trigger fail-closed behavior, TRUNCATE rejection, formatter errors, two migration modes, and ambiguous-migration rollback.
-
-The suite also tests that successful file delivery empties audit_outbox and current relationship tables have no version column. Native PostgreSQL multi-connection concurrency and the Windows locking branch were not executed; the POSIX file-lock branch was exercised in this environment.
-
-To run on a dedicated PostgreSQL test database, set GRADEFLOW_TEST_DSN and run:
-
-```bash
-python -m pip install pytest
-python -m pytest -q test_database.py test_audit.py
-```
-
-The tests create/drop isolated schemas, not the database itself. No deployed data was modified while preparing this release.
-
-References: [PostgreSQL trigger transaction behavior](https://www.postgresql.org/docs/current/trigger-definition.html), [transaction-local settings](https://www.postgresql.org/docs/current/functions-admin.html), and [row locking](https://www.postgresql.org/docs/current/sql-select.html).
+测试各自创建与删除隔离 schema。覆盖接口、角色权限、分数同步、并发、过期令牌、回滚、审计、状态流转、完整行、字段白名单和空更新。原分支已有 5 个测试设置问题；现已修正教师身份 fixture 与迁移 012 预期，未放宽应用权限。

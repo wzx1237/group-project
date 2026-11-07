@@ -9,22 +9,9 @@ class Rubric:
   """Business methods sharing Database transaction and audit handling."""
 
   def get_rubric(self, QID: str, *, exam_ID: int) -> Dict[str, Any] | None:
-    '''
-    input: question ID
-    output: a dictionary of rubric, in format {QID: ..., grading_method: ..., total_scores: ...}
-    '''
-    try:
-      # using 'with' to handle commit() and pool.connection return our connection to our pool
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """SELECT * FROM Rubric WHERE Rubric.exam_ID = %s AND QID = %s""", 
-          (exam_ID, QID)
-        )
-        return self.get_one(cursor)    # primary key search, only one return
-    except psycopg.Error as error:
-      # if exception happens, save it to our log
-      logger.exception("question not found", extra={"extra": {"QID": QID}})
-      raise
+    """Return one full question using the common query and audited connection."""
+    with self.get_connection() as conn:
+      return question_row(conn, exam_ID, QID)
 
   def get_rubric_labels(self, QID: str, *, exam_ID: int) -> List[Dict[str, Any]]:
     """Return the current labels and question ID; history lives in audit JSONL."""
@@ -79,26 +66,27 @@ class Rubric:
       )
       return cursor.rowcount > 0
 
-  def update_rubric(self, QID: str, Label_ID: int, old_label_ID: int | None = None, *, exam_ID: int) -> bool:
-    """Replace one current relationship without changing the Label definition."""
-    with self.get_worker() as cursor:
-      self._lock_rubric(cursor, QID, exam_ID)
-      cursor.execute('SELECT Label_ID FROM Rubric_Label WHERE exam_ID = %s AND QID = %s', (exam_ID, QID))
-      current = [row['label_id'] for row in self.get_all(cursor)]
-      if old_label_ID is None:
-        if len(current) != 1:
-          raise ValueError('Please specify old_label_ID when the rubric does not have exactly one label')
-        old_label_ID = current[0]
-      if old_label_ID not in current:
-        raise ValueError('old_label_ID is not in the current rubric')
-      if Label_ID == old_label_ID:
-        return True
-      if Label_ID in current:
-        raise ValueError('The replacement label is already in the current rubric')
-      # UPDATE supplies both OLD and NEW images to the audit trigger automatically.
-      cursor.execute('UPDATE Rubric_Label SET Label_ID = %s WHERE exam_ID = %s AND QID = %s AND Label_ID = %s',
-                     (Label_ID, exam_ID, QID, old_label_ID))
-      return cursor.rowcount > 0
+  # Retired: the maintained question/label editing APIs include score synchronization.
+  # def update_rubric(self, QID: str, Label_ID: int, old_label_ID: int | None = None, *, exam_ID: int) -> bool:
+  #   """Replace one current relationship without changing the Label definition."""
+  #   with self.get_worker() as cursor:
+  #     self._lock_rubric(cursor, QID, exam_ID)
+  #     cursor.execute('SELECT Label_ID FROM Rubric_Label WHERE exam_ID = %s AND QID = %s', (exam_ID, QID))
+  #     current = [row['label_id'] for row in self.get_all(cursor)]
+  #     if old_label_ID is None:
+  #       if len(current) != 1:
+  #         raise ValueError('Please specify old_label_ID when the rubric does not have exactly one label')
+  #       old_label_ID = current[0]
+  #     if old_label_ID not in current:
+  #       raise ValueError('old_label_ID is not in the current rubric')
+  #     if Label_ID == old_label_ID:
+  #       return True
+  #     if Label_ID in current:
+  #       raise ValueError('The replacement label is already in the current rubric')
+  #     # UPDATE supplies both OLD and NEW images to the audit trigger automatically.
+  #     cursor.execute('UPDATE Rubric_Label SET Label_ID = %s WHERE exam_ID = %s AND QID = %s AND Label_ID = %s',
+  #                    (Label_ID, exam_ID, QID, old_label_ID))
+  #     return cursor.rowcount > 0
 
   def _lock_rubric(self, cursor, QID: str, exam_ID: int) -> None:
     """The parent row is a stable lock even when its current label set is empty."""
@@ -106,7 +94,7 @@ class Rubric:
       """
       SELECT QID FROM Rubric WHERE exam_ID = %s AND QID = %s
       FOR NO KEY UPDATE
-      """, 
+      """,
       (exam_ID, QID)
     )
     if self.get_one(cursor) is None:
@@ -138,3 +126,27 @@ class Rubric:
     with self.get_worker() as cursor:
       cursor.execute('DELETE FROM rubric WHERE exam_id=%s AND qid=%s', (exam_ID,QID))
       return cursor.rowcount > 0
+
+
+def lock_question(conn, exam_id, qid, *, edit=False) -> dict | None:
+    """Lock question; return None when missing."""
+    lock = 'FOR NO KEY UPDATE' if edit else 'FOR SHARE'
+    return conn.execute('SELECT * FROM rubric WHERE exam_id=%s AND qid=%s ' + lock, (exam_id, qid)).fetchone()
+
+
+def question_row(conn, exam_id, qid) -> dict | None:
+    """Question row; return None when missing."""
+    return conn.execute('SELECT * FROM rubric WHERE exam_id=%s AND qid=%s', (exam_id, qid)).fetchone()
+
+
+def question_ids(conn, exam_id) -> list[dict]:
+    """Question ids; return rows in query order."""
+    return conn.execute('SELECT qid FROM rubric WHERE exam_id=%s ORDER BY qid', (exam_id,)).fetchall()
+
+
+def insert_question(conn, exam_id, qid, grading_method, total_scores) -> int:
+    """Insert question; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO rubric(exam_id,qid,grading_method,total_scores) VALUES(%s,%s,%s,%s)""",
+        (exam_id, qid, grading_method, total_scores),
+    ).rowcount

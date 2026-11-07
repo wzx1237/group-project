@@ -1,4 +1,5 @@
 """Rubric reads and adding a shared label with atomic regrade propagation."""
+
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel, Field
 from app import workflow
 from app.grading.service import amount
 from app.routing.grading_compat import Expected, Service
+from app.database import grading as grading_db
+from app.database import rubric as rubric_db
 
 router = APIRouter(prefix='/api/exams')
 
@@ -39,10 +42,6 @@ def add_question(exam_ID: int, body: QuestionIn, svc: Service):
     """Initialize a question; existing exam creation/assignment methods stay intact."""
     with svc.access(exam_ID) as (conn, _):
         workflow.require(conn, exam_ID, ('draft',), 'Adding a question')
-        conn.execute('INSERT INTO rubric(exam_id,qid,grading_method,total_scores) VALUES(%s,%s,%s,%s)',
-                     (exam_ID, body.qid, body.grading_method, amount(body.total_score)))
-        conn.execute('''INSERT INTO mapping(exam_id,uid,qid,status)
-            SELECT p.exam_id,p.uid,%s,'Pending' FROM studentpaper p
-            JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
-            WHERE p.exam_id=%s ON CONFLICT DO NOTHING''', (body.qid, exam_ID))
+        rubric_db.insert_question(conn, exam_ID, body.qid, body.grading_method, amount(body.total_score))
+        grading_db.seed_question_mappings(conn, body.qid, exam_ID)
         return body

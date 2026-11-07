@@ -46,9 +46,10 @@ class Staff:
       logger.exception("query staff failed", extra={"extra": {"directory_ID": directory_ID}})
       raise
 
-  def get_grader(self, directory_ID: str) -> Dict[str, Any] | None:
-    """Compatibility name for get_staff; Grader_ID is now a staff directory ID."""
-    return self.get_staff(directory_ID)
+  # Retired: get_staff is the maintained profile API.
+  # def get_grader(self, directory_ID: str) -> Dict[str, Any] | None:
+  #   """Compatibility name for get_staff; Grader_ID is now a staff directory ID."""
+  #   return self.get_staff(directory_ID)
 
   def get_grader_assignments(self, directory_ID: str, *, exam_ID: int) -> List[Dict[str, Any]]:
     '''
@@ -63,7 +64,7 @@ class Staff:
           FROM Mapping
           WHERE Mapping.exam_ID = %s
             AND directory_id = %s
-          """, 
+          """,
           (exam_ID, directory_ID)
         )
         return self.get_all(cursor)    # primary key search, only return one row, if not find, return None
@@ -136,7 +137,7 @@ class Staff:
           WHERE Mapping.exam_ID = %s
             AND uid = %s
             AND QID = %s
-          """, 
+          """,
           (status, exam_ID, UID, QID)
         )
         return (cursor.rowcount > 0)
@@ -163,18 +164,77 @@ class Staff:
       raise
 
   def add_staff_to_course(self, course_ID: int, directory_ID: str) -> bool:
-    """Add a course membership; return False without changing an existing membership."""
-    try:
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """
-          INSERT INTO course_staff (course_id, directory_id)
-          VALUES (%s, %s)
-          ON CONFLICT (course_id, directory_id) DO NOTHING
-          """,
-          (course_ID, directory_ID.lower())
-        )
-        return cursor.rowcount > 0
-    except psycopg.Error as error:
-      logger.exception("add course staff failed", extra={"extra": {"directory_ID": directory_ID, "course_ID": course_ID}})
-      raise
+    """Add a membership using the shared query without changing an existing one."""
+    with self.get_connection() as conn:
+      return ensure_course_member(conn, course_ID, directory_ID.lower()) > 0
+
+
+def course_membership(conn, course_id, directory_id) -> dict | None:
+    """Course membership; return None when missing."""
+    return conn.execute(
+        """SELECT 1 FROM course_staff WHERE course_id = %s AND directory_id = %s""",
+        (course_id, directory_id),
+    ).fetchone()
+
+
+def staff_role(conn, directory_id) -> dict | None:
+    """Staff role; return None when missing."""
+    return conn.execute('SELECT role FROM staff WHERE directory_id = %s', (directory_id,)).fetchone()
+
+
+def lock_exam_membership(conn, exam_id, actor) -> dict | None:
+    """Read the actor role while holding membership and assignment share locks."""
+    return conn.execute(
+        """SELECT s.role FROM course_staff cs
+        JOIN staff s USING(directory_id)
+        JOIN assignment e USING(course_id)
+        WHERE e.exam_id=%s AND cs.directory_id=%s FOR SHARE OF cs,e,s""",
+        (exam_id, actor),
+    ).fetchone()
+
+
+def staff_exists(conn, directory_id) -> dict | None:
+    """Staff exists; return None when missing."""
+    return conn.execute('SELECT 1 FROM staff WHERE directory_id = %s', (directory_id,)).fetchone()
+
+
+def add_course_member(conn, course_id, directory_id) -> int:
+    """Add course member; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s)""",
+        (course_id, directory_id),
+    ).rowcount
+
+
+def lock_course_membership(conn, course_id, actor) -> dict | None:
+    """Lock course membership; return None when missing."""
+    return conn.execute(
+        """SELECT s.role FROM course_staff cs JOIN staff s USING(directory_id) WHERE course_id=%s AND directory_id=%s FOR SHARE""",
+        (course_id, actor),
+    ).fetchone()
+
+
+def course_role(conn, course_id, actor) -> dict | None:
+    """Course role; return None when missing."""
+    return conn.execute(
+        """SELECT s.role FROM course_staff cs JOIN staff s USING (directory_id)
+        WHERE cs.course_id = %s AND cs.directory_id = %s""",
+        (course_id, actor),
+    ).fetchone()
+
+
+def upsert_staff(conn, directory_id, name, email, role) -> int:
+    """Upsert staff; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO staff (directory_id, name, email, role) VALUES (%s, %s, %s, %s)
+        ON CONFLICT (directory_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role""",
+        (directory_id, name, email, role),
+    ).rowcount
+
+
+def ensure_course_member(conn, course_id, directory_id) -> int:
+    """Ensure course member; return the affected row count."""
+    return conn.execute(
+        """INSERT INTO course_staff (course_id, directory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING""",
+        (course_id, directory_id),
+    ).rowcount

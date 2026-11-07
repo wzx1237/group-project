@@ -60,3 +60,29 @@ class StudentPaper:
         (scanned_PDF, comments, UID, exam_ID)
       )
       return cursor.rowcount > 0
+
+
+def prune_ungraded_papers(conn, exam_id, matched) -> int:
+    """Remove unmatched papers only when no saved decision would be lost."""
+    return conn.execute(
+        """DELETE FROM studentpaper p WHERE p.exam_id = %s AND NOT p.uid = ANY(%s)
+        AND NOT EXISTS (SELECT 1 FROM decision d WHERE d.exam_id = p.exam_id AND d.uid = p.uid)""",
+        (exam_id, matched),
+    ).rowcount
+
+
+def paper_path(conn, exam_id, uid) -> dict | None:
+    """Return the saved scan reference; filesystem authorization belongs to the service."""
+    return conn.execute('SELECT scanned_pdf FROM studentpaper WHERE exam_id=%s AND uid=%s', (exam_id, uid)).fetchone()
+
+
+def sync_scanned_papers(conn, exam_id, uids, scan_paths, course_id) -> int:
+    """Upsert matched papers only for enrolled students; preserve unchanged paths."""
+    return conn.execute(
+        """INSERT INTO studentpaper(exam_id,uid,scanned_pdf)
+        SELECT %s,s.uid,s.path FROM unnest(%s::text[],%s::text[]) AS s(uid,path)
+        JOIN enrollment en ON en.uid=s.uid AND en.course_id=%s
+        ON CONFLICT (exam_id,uid) DO UPDATE SET scanned_pdf=EXCLUDED.scanned_pdf
+        WHERE studentpaper.scanned_pdf IS DISTINCT FROM EXCLUDED.scanned_pdf""",
+        (exam_id, uids, scan_paths, course_id),
+    ).rowcount

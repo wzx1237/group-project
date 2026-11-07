@@ -1,5 +1,6 @@
 """Sign-in through UMD CAS, sign-out, and the `current_user` dependency."""
 
+
 import html
 import logging
 import time
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import cas
 from app.settings import Settings
+from app.database import staff as staff_db
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def safe_next(path: str | None) -> str:
 
 def is_staff(request: Request, directory_id: str) -> bool:
     with request.app.state.db.connection() as conn:
-        return conn.execute("SELECT 1 FROM staff WHERE directory_id = %s", (directory_id,)).fetchone() is not None
+        return staff_db.staff_exists(conn, directory_id) is not None
 
 
 def signed_in_user(request: Request) -> str | None:
