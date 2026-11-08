@@ -252,3 +252,70 @@ Methods below use the shared audited connection; an outer `Database.transaction(
 | --- | --- |
 | `add_student_paper(self, UID: str, scanned_PDF: str, comments: str \| None=None, *, exam_ID: int) -> bool` | Add one enrolled student's exam paper without overwriting an existing paper. |
 | `update_student_paper(self, UID: str, scanned_PDF: str \| None=None, comments: str \| None=None, *, exam_ID: int) -> bool` | Update the supplied PDF reference and/or comment; return False if missing. |
+
+## Second-stage extracted domain functions
+
+The class methods above now delegate to connection functions. Each function below uses the supplied transaction; private helpers also accept conn. Legacy parameter spelling remains compatible.
+
+### `course`
+
+- `add_course(conn, code: str, term: str, title: str | None=None)`
+- `get_course_enrollment(conn, course_id: int)`
+
+### `exam`
+
+- `add_exam(conn, exam_name: str, course_ID: int)`
+
+### `staff`
+
+- `get_staff(conn, directory_ID: str)`
+- `get_grader_assignments(conn, directory_ID: str, *, exam_ID: int)`
+- `assign_grader(conn, UID: str, QID: str, directory_ID: str, status: str='Pending', *, exam_ID: int)`
+- `update_assignment_status(conn, UID: str, QID: str, status: str, *, exam_ID: int)`
+- `add_staff(conn, directory_ID: str, name: str, email: str | None=None, *, role: str)`
+- `add_staff_to_course(conn, course_ID: int, directory_ID: str)`
+
+### `student`
+
+- `get_student(conn, UID: str, *, exam_ID: int | None=None)`
+- `add_student(conn, UID: str, name: str, email: str | None=None)`
+- `add_student_to_course(conn, course_ID: int, UID: str)`
+
+### `studentpaper`
+
+- `add_student_paper(conn, UID: str, scanned_PDF: str, comments: str | None=None, *, exam_ID: int)`
+- `update_student_paper(conn, UID: str, scanned_PDF: str | None=None, comments: str | None=None, *, exam_ID: int)`
+
+### `rubric`
+
+- `get_rubric(conn, QID: str, *, exam_ID: int)`
+- `get_rubric_labels(conn, QID: str, *, exam_ID: int)`
+- `add_rubric_label(conn, QID: str, label: int, *, exam_ID: int)`
+- `add_rubric_labels(conn, QID: str, labels: List[int], *, exam_ID: int)`
+- `remove_rubric_label(conn, QID: str, Label_ID: int, *, exam_ID: int)`
+- `_lock_rubric(conn, QID: str, exam_ID: int)`
+- `add_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID)`
+- `edit_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID)`
+- `remove_question(conn, QID, *, exam_ID)`
+
+### `label`
+
+- `get_label(conn, label_ID: int, *, exam_ID: int)`
+- `add_label(conn, title: str, description: str | None, deduction: float | Decimal, *, exam_ID: int)`
+- `edit_label(conn, label_ID, title, description, deduction, *, exam_ID)`
+- `remove_label(conn, label_ID, *, exam_ID)`
+- `_change_label(conn, label_ID, exam_ID, values)`
+
+### `decision`
+
+- `get_decision(conn, record_ID: int, *, exam_ID: int)`
+- `get_decision_by_student_question(conn, UID: str, QID: str, *, exam_ID: int)`
+- `save_decision(conn, UID: str, QID: str, score: float | Decimal=0, comments: str | None=None, *, exam_ID: int)`
+- `update_decision(conn, record_ID: int, comments: str | None=None, *, exam_ID: int)`
+- `get_decision_label(conn, record_ID: int, *, exam_ID: int)`
+- `add_decision_labels(conn, record_ID: int, labels: List[int], Graders: List[str], *, exam_ID: int)`
+- `add_decision_label(conn, record_ID: int, label: int, Grader: str, *, exam_ID: int)`
+- `remove_decision_label(conn, record_ID: int, label_ID: int, *, exam_ID: int)`
+- `_lock_decision(conn, record_ID: int, exam_ID: int)`
+- `_validate_graders(conn, graders, exam_ID: int)`
+- `_recalculate_score(conn, record_ID: int, exam_ID: int)`

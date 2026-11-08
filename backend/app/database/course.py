@@ -15,41 +15,15 @@ __all__ = ["Course"]
 class Course:
   """Methods provided to Database; this class does not create its own pool."""
 
-  def add_course(self, code: str, term: str, title: str | None = None) -> int:
-    """Create a course offering and return its generated course ID."""
-    try:
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """
-          INSERT INTO course (code, term, title)
-          VALUES (%s, %s, %s)
-          RETURNING course_id
-          """,
-          (code, term, title)
-        )
-        return self.get_one(cursor)["course_id"]
-    except psycopg.Error as error:
-      logger.exception("create course failed", extra={"extra": {"code": code, "term": term}})
-      raise
+  def add_course(self, code: str, term: str, title: str | None=None) -> int:
+    """Compatibility adapter; transaction and audit stay with Database."""
+    with self.get_connection() as conn:
+      return add_course(conn, code, term, title)
 
   def get_course_enrollment(self, course_id: int) -> List[Dict[str, Any]]:
-    """Return enrolled student IDs and names for one course."""
-    try:
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """
-          SELECT en.uid, s.name
-          FROM enrollment AS en
-          JOIN student AS s ON s.uid = en.uid
-          WHERE en.course_id = %s
-          ORDER BY en.uid
-          """,
-          (course_id, )
-        )
-        return self.get_all(cursor)
-    except psycopg.Error as error:
-      logger.exception("query enrollment failed", extra={"extra": {"course_id": course_id}})
-      raise
+    """Compatibility adapter; transaction and audit stay with Database."""
+    with self.get_connection() as conn:
+      return get_course_enrollment(conn, course_id)
 
 
 def courses_for_staff(conn, directory_id) -> list[dict]:
@@ -110,3 +84,41 @@ def ensure_course(conn, code, term) -> int:
 def course_id_by_term(conn, code, term) -> dict | None:
     """Course id by term; return None when missing."""
     return conn.execute('SELECT course_id FROM course WHERE code = %s AND term = %s', (code, term)).fetchone()
+
+
+def add_course(conn, code: str, term: str, title: str | None=None) -> int:
+    """Create a course offering and return its generated course ID."""
+    try:
+      with conn.cursor() as cursor:
+        cursor.execute(
+          """
+          INSERT INTO course (code, term, title)
+          VALUES (%s, %s, %s)
+          RETURNING course_id
+          """,
+          (code, term, title)
+        )
+        return cursor.fetchone()["course_id"]
+    except psycopg.Error as error:
+      logger.exception("create course failed", extra={"extra": {"code": code, "term": term}})
+      raise
+
+
+def get_course_enrollment(conn, course_id: int) -> List[Dict[str, Any]]:
+    """Return enrolled student IDs and names for one course."""
+    try:
+      with conn.cursor() as cursor:
+        cursor.execute(
+          """
+          SELECT en.uid, s.name
+          FROM enrollment AS en
+          JOIN student AS s ON s.uid = en.uid
+          WHERE en.course_id = %s
+          ORDER BY en.uid
+          """,
+          (course_id, )
+        )
+        return cursor.fetchall()
+    except psycopg.Error as error:
+      logger.exception("query enrollment failed", extra={"extra": {"course_id": course_id}})
+      raise

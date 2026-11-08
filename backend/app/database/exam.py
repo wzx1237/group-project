@@ -16,24 +16,9 @@ class Exam:
   """Methods provided to Database; this class does not create its own pool."""
 
   def add_exam(self, exam_name: str, course_ID: int) -> int:
-    """Create an exam in an existing course and return its generated ID. Its slug is made from the name."""
-    try:
-      with self.get_worker() as cursor:
-        # Slugs are unique across all courses (they name upload folders and templates).
-        cursor.execute("SELECT slug FROM assignment")
-        slug = unique_slug(exam_name, {row["slug"] for row in cursor.fetchall()})
-        cursor.execute(
-          """
-          INSERT INTO assignment (course_id, exam_name, slug)
-          VALUES (%s, %s, %s)
-          RETURNING exam_id
-          """,
-          (course_ID, exam_name, slug)
-        )
-        return self.get_one(cursor)["exam_id"]
-    except psycopg.Error as error:
-      logger.exception("create exam failed", extra={"extra": {"course_ID": course_ID}})
-      raise
+    """Compatibility adapter; transaction and audit stay with Database."""
+    with self.get_connection() as conn:
+      return add_exam(conn, exam_name, course_ID)
 
   # Retired: get_assignment(conn, exam_id) returns the full assignment row.
   # def get_exam(self, exam_ID: int) -> Dict[str, Any] | None:
@@ -176,3 +161,24 @@ def seed_assignment(conn, course_id, title, due, slug, kind, short) -> int:
         ON CONFLICT (course_id, slug) DO NOTHING""",
         (course_id, title, due, slug, kind, short),
     ).rowcount
+
+
+def add_exam(conn, exam_name: str, course_ID: int) -> int:
+    """Create an exam in an existing course and return its generated ID. Its slug is made from the name."""
+    try:
+      with conn.cursor() as cursor:
+        # Slugs are unique across all courses (they name upload folders and templates).
+        cursor.execute("SELECT slug FROM assignment")
+        slug = unique_slug(exam_name, {row["slug"] for row in cursor.fetchall()})
+        cursor.execute(
+          """
+          INSERT INTO assignment (course_id, exam_name, slug)
+          VALUES (%s, %s, %s)
+          RETURNING exam_id
+          """,
+          (course_ID, exam_name, slug)
+        )
+        return cursor.fetchone()["exam_id"]
+    except psycopg.Error as error:
+      logger.exception("create exam failed", extra={"extra": {"course_ID": course_ID}})
+      raise

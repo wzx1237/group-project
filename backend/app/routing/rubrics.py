@@ -11,6 +11,7 @@ from app.grading.service import amount, token
 from app.routing.auth import current_user
 from app.database import grading as grading_db
 from app.database import rubric as rubric_db
+from app.database import label as label_db
 
 router = APIRouter(prefix="/api/assignments/{assignment_id}/rubric", dependencies=[Depends(current_user)])
 
@@ -100,7 +101,7 @@ def add_question(assignment_id: str, body: QuestionIn, svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
         workflow.require(conn, exam, ('draft',), 'Adding a question')
-        svc.db.add_question(body.qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
+        rubric_db.add_question(conn, body.qid, body.title, body.grading_method, amount(body.total_score), body.region, body.scoring, exam_ID=exam)
         grading_db.seed_question_mappings(conn, body.qid, exam)
         return question(svc,exam,body.qid)
 
@@ -112,9 +113,9 @@ def update_question(assignment_id: str, qid: str, body: QuestionIn, svc: Service
         if body.qid != qid:
             raise HTTPException(422,'Question ID cannot change; create a new question instead')
         # Regions locate answers on the scans, so they are fixed once scans are collected.
-        moved = body.region != svc.db.get_rubric(qid,exam_ID=exam)['region']
+        moved = body.region != rubric_db.get_rubric(conn, qid, exam_ID=exam)['region']
         workflow.require(conn,exam,('draft',) if moved else workflow.OPEN,'Moving a region' if moved else 'Editing a question')
-        svc.db.edit_question(qid,body.title,body.grading_method,amount(body.total_score),body.region,body.scoring,exam_ID=exam)
+        rubric_db.edit_question(conn, qid, body.title, body.grading_method, amount(body.total_score), body.region, body.scoring, exam_ID=exam)
         return question(svc,exam,qid)
 
 
@@ -123,7 +124,7 @@ def retire_question(assignment_id: str, qid: str, svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam,qid,edit=True) as (conn,_):
         workflow.require(conn,exam,('draft',),'Removing a question')
-        svc.db.remove_question(qid,exam_ID=exam)
+        rubric_db.remove_question(conn, qid, exam_ID=exam)
 
 
 @router.post('/questions/{qid}/criteria', response_model=Criterion,status_code=201)
@@ -131,11 +132,11 @@ def add_criterion(assignment_id: str,qid: str,body: CriterionIn,svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam,qid,edit=True) as (conn,_):
         workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
-        label = svc.db.add_label(body.title,body.description,amount(body.deduction),exam_ID=exam)
-        svc.db.add_rubric_label(qid,label,exam_ID=exam)
+        label = label_db.add_label(conn, body.title, body.description, amount(body.deduction), exam_ID=exam)
+        rubric_db.add_rubric_label(conn, qid, label, exam_ID=exam)
         # A new criterion requires review; it must not select itself on old answers.
         grading_db.mark_question_for_regrade(conn, exam, qid)
-        return criterion(svc.db.get_label(label,exam_ID=exam))
+        return criterion(label_db.get_label(conn, label, exam_ID=exam))
 
 
 @router.patch('/criteria/{label_id}',response_model=Criterion)
@@ -143,9 +144,9 @@ def update_criterion(assignment_id: str,label_id: int,body: CriterionIn,svc: Ser
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn,_):
         workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
-        if not svc.db.edit_label(label_id,body.title,body.description,amount(body.deduction),exam_ID=exam):
+        if not label_db.edit_label(conn, label_id, body.title, body.description, amount(body.deduction), exam_ID=exam):
             raise HTTPException(404,'Criterion not found')
-        return criterion(svc.db.get_label(label_id,exam_ID=exam))
+        return criterion(label_db.get_label(conn, label_id, exam_ID=exam))
 
 
 @router.delete('/criteria/{label_id}',status_code=204)
@@ -153,5 +154,5 @@ def retire_criterion(assignment_id: str,label_id: int,svc: Service):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn,_):
         workflow.require(conn,exam,workflow.OPEN,'Changing the rubric')
-        if not svc.db.remove_label(label_id,exam_ID=exam):
+        if not label_db.remove_label(conn, label_id, exam_ID=exam):
             raise HTTPException(404,'Criterion not found')

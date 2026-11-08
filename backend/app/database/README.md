@@ -11,7 +11,18 @@
 - `Database`：保留共享池、事务复用、审计上下文，以及已验证的评分 / rubric / label 写入口。部分兼容方法已转调共用函数，避免两份 SQL。
 - `app/db.py`：启动时运行编号 SQL 迁移并创建应用池；这里的迁移 SQL 属于基础设施，保留在原处。
 
-建议继续使用普通函数扩展数据访问。暂时保留 `Database` 的事务和审计生命周期，避免为了去掉类而重新实现一套连接管理。以后迁移剩余写方法时，先抽出接收 conn 的完整原子操作，再把旧方法做成轻量适配器。
+普通函数现在也覆盖原来的 39 个领域方法，包括 label 编辑、decision 标签集替换、分数重算和 question 编辑。各领域类仅保留兼容转发：旧调用仍经由 Database 获取审计连接，新调用直接传入 conn。函数内部只创建 cursor，不创建连接、不提交事务；跨领域重算也复用同一 conn。
+
+```python
+from app.database import label, grading
+
+with database.audit_context(actor_ID=actor), database.transaction():
+    with database.get_connection() as conn:
+        label.edit_label(conn, label_id, title, description, deduction, exam_ID=exam_id)
+        grading.mark_question_for_regrade(conn, exam_id, qid)
+```
+
+这组操作中的定义更新、受影响成绩重算、重评状态和审计 outbox 一起提交或回滚。重评标记仍由服务按业务场景决定，不在底层 edit_label 中自动增加。新抽取函数暂保留旧参数名（如 exam_ID），兼容原有调用约定。
 
 ## 模块索引
 

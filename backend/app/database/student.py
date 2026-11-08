@@ -13,53 +13,20 @@ __all__ = ["Student"]
 class Student:
   """Methods provided to Database; this class does not create its own pool."""
 
-  def get_student(self, UID: str, *, exam_ID: int | None = None) -> Dict[str, Any] | None:
-    """Return global student data, or student data joined to one exam paper."""
-    try:
-      with self.get_worker() as cursor:
-        if exam_ID is None:
-          cursor.execute(
-            """SELECT uid, name, email FROM student WHERE uid = %s""",
-            (UID, )
-          )
-        else:
-          # Student identity is global; the PDF and comments belong to one exam.
-          cursor.execute(
-            """
-            SELECT s.uid, s.name, s.email, p.exam_ID, p.scanned_PDF, p.comments
-            FROM student AS s
-            JOIN StudentPaper AS p ON p.uid = s.uid
-            WHERE s.uid = %s
-              AND p.exam_ID = %s
-            """,
-            (UID, exam_ID)
-          )
-        return self.get_one(cursor)
-    except psycopg.Error as error:
-      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
-      raise
+  def get_student(self, UID: str, *, exam_ID: int | None=None) -> Dict[str, Any] | None:
+    """Compatibility adapter; transaction and audit stay with Database."""
+    with self.get_connection() as conn:
+      return get_student(conn, UID, exam_ID=exam_ID)
 
-  def add_student(self, UID: str, name: str, email: str | None = None) -> bool:
-    """Create a global student; return False if the UID already exists."""
-    try:
-      with self.get_worker() as cursor:
-        cursor.execute(
-          """
-          INSERT INTO student (uid, name, email)
-          VALUES (%s, %s, %s)
-          ON CONFLICT (uid) DO NOTHING
-          """,
-          (UID, name, email)
-        )
-        return cursor.rowcount > 0
-    except psycopg.Error as error:
-      logger.exception("create student failed", extra={"extra": {"UID": UID}})
-      raise
+  def add_student(self, UID: str, name: str, email: str | None=None) -> bool:
+    """Compatibility adapter; transaction and audit stay with Database."""
+    with self.get_connection() as conn:
+      return add_student(conn, UID, name, email)
 
   def add_student_to_course(self, course_ID: int, UID: str) -> bool:
-    """Enroll an existing student using the common persistence function."""
+    """Compatibility adapter; transaction and audit stay with Database."""
     with self.get_connection() as conn:
-      return enroll_student(conn, course_ID, UID) > 0
+      return add_student_to_course(conn, course_ID, UID)
 
 
 def lock_exam_enrollment(conn, exam_id, uid) -> dict | None:
@@ -108,3 +75,53 @@ def seed_student(conn, uid, name, directory_id) -> int:
         ON CONFLICT (uid) DO UPDATE SET name = EXCLUDED.name, directory_id = EXCLUDED.directory_id""",
         (uid, name, directory_id),
     ).rowcount
+
+
+def get_student(conn, UID: str, *, exam_ID: int | None=None) -> Dict[str, Any] | None:
+    """Return global student data, or student data joined to one exam paper."""
+    try:
+      with conn.cursor() as cursor:
+        if exam_ID is None:
+          cursor.execute(
+            """SELECT uid, name, email FROM student WHERE uid = %s""",
+            (UID, )
+          )
+        else:
+          # Student identity is global; the PDF and comments belong to one exam.
+          cursor.execute(
+            """
+            SELECT s.uid, s.name, s.email, p.exam_ID, p.scanned_PDF, p.comments
+            FROM student AS s
+            JOIN StudentPaper AS p ON p.uid = s.uid
+            WHERE s.uid = %s
+              AND p.exam_ID = %s
+            """,
+            (UID, exam_ID)
+          )
+        return cursor.fetchone()
+    except psycopg.Error as error:
+      logger.exception("query student UID failed", extra={"extra": {"UID": UID}})
+      raise
+
+
+def add_student(conn, UID: str, name: str, email: str | None=None) -> bool:
+    """Create a global student; return False if the UID already exists."""
+    try:
+      with conn.cursor() as cursor:
+        cursor.execute(
+          """
+          INSERT INTO student (uid, name, email)
+          VALUES (%s, %s, %s)
+          ON CONFLICT (uid) DO NOTHING
+          """,
+          (UID, name, email)
+        )
+        return cursor.rowcount > 0
+    except psycopg.Error as error:
+      logger.exception("create student failed", extra={"extra": {"UID": UID}})
+      raise
+
+
+def add_student_to_course(conn, course_ID: int, UID: str) -> bool:
+    """Enroll an existing student using the common persistence function."""
+    return enroll_student(conn, course_ID, UID) > 0

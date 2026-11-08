@@ -199,3 +199,12 @@
 原分支复现 5 个失败：4 个写入测试以 TA 身份执行教师操作，1 个迁移预期漏掉 012。测试现使用保留原课程范围的 instructor fixture，并补入 012 预期；应用权限规则保持原样。
 
 验证命令：`cd backend && GRADEFLOW_TEST_DSN=... .venv/bin/python -m pytest -q`。未改动前复现相同的 5 个测试设置失败，修正后全部通过。
+
+## 第二阶段：领域方法函数化
+
+- 原来 39 个领域方法移为接收 conn 的函数；类方法只负责审计连接和兼容转发。
+- 跨领域的 label / rubric 分数重算直接调用 decision 的 conn 助手，不再回调 Database。
+- 当前服务在已有 conn 的范围内直接调用函数；update_assignment_status 保留兼容入口以维持既有故障注入检查。
+- 评分重算故障注入改为作用于 decision._recalculate_score；新增改标签、重算与重评整组操作的提交 / 回滚测试。
+
+第二阶段验证：PostgreSQL 18 下 94 项测试全部通过；git diff --check 通过。

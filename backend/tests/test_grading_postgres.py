@@ -333,8 +333,33 @@ def test_label_recalculation_failure_rolls_back_definition(native, monkeypatch):
     # It must roll back the label and every derived score.
     def fail(*args):
         raise psycopg.errors.NumericValueOutOfRange('recalculation failed')
-    monkeypatch.setattr(type(database), '_recalculate_score', fail)
+    from app.database import decision
+    monkeypatch.setattr(decision, '_recalculate_score', fail)
     with pytest.raises(psycopg.errors.NumericValueOutOfRange):
         database.edit_label(2,'Too large',None,999,exam_ID=1)
     assert database.get_label(2,exam_ID=1)['deduction']==-1
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==4
+
+
+
+def test_conn_label_edit_and_regrade_share_outer_transaction(native):
+    from app.database import decision, grading, label
+
+    client, database, _, _, _ = native
+    assert save(client, [1, 2]).status_code == 201
+    with pytest.raises(RuntimeError, match="abort"):
+        with database.audit_context(actor_ID="teacher"), database.transaction(), database.get_connection() as conn:
+            assert label.edit_label(conn, 2, "Changed", None, -2, exam_ID=1)
+            grading.mark_question_for_regrade(conn, 1, "Q1")
+            assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 3
+            raise RuntimeError("abort")
+    with database.get_connection() as conn:
+        assert label.get_label(conn, 2, exam_ID=1)["deduction"] == -1
+        assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 4
+        assert grading.mapping_row(conn, 1, "123456789", "Q1")["status"] == "Finished"
+    with database.audit_context(actor_ID="teacher"), database.transaction(), database.get_connection() as conn:
+        label.edit_label(conn, 2, "Changed", None, -2, exam_ID=1)
+        grading.mark_question_for_regrade(conn, 1, "Q1")
+    with database.get_connection() as conn:
+        assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 3
+        assert grading.mapping_row(conn, 1, "123456789", "Q1")["status"] == "Regrade"
