@@ -247,9 +247,9 @@ def test_conn_functions_follow_the_outer_transaction_and_audit(api):
     _, database = api
     with pytest.raises(RuntimeError, match='abort'):
         with database.audit_context(actor_ID='alice'), database.transaction(), database.get_connection() as conn:
-            created = course.create_course(conn, 'ROLLBACK', 'Fall', 'Temporary')
-            staff.add_course_member(conn, created['course_id'], 'alice')
-            exam.create_assignment(conn, created['course_id'], 'Temporary', None, 'rollback-only', 'quiz', None)
+            created_id = course.create_course(conn, 'ROLLBACK', 'Fall', 'Temporary')
+            staff.add_course_member(conn, created_id, 'alice')
+            exam.create_assignment(conn, created_id, 'Temporary', None, 'rollback-only', 'quiz', None)
             raise RuntimeError('abort')
     with database.get_connection() as conn:
         assert course.course_by_code(conn, 'ROLLBACK') is None

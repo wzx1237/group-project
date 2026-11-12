@@ -17,6 +17,7 @@ from app.grading.service import amount, token
 
 from app.routing.auth import current_user
 from app.database import exam as exam_db
+from app.database import label as label_db
 from app.database import grading as grading_db
 from app.database import regrade as regrade_db
 from app.database import rubric as rubric_db
