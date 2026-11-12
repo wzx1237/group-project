@@ -5,7 +5,7 @@ A structured tracker for upcoming features, bug fixes, and permission enhancemen
 ## UI & Global Navigation
 - [x] **Global Back Button**: Add a back button on every single page.
 - [x] **Gradeflow Header Banner**: Add the Gradeflow banner at the top of every screen.
-- [ ] **Dashboard Course Card Options**: Add functionality to the options button on the dashboard course card (e.g., allow uploading/setting an image) *(Optional)*.
+- [x] **Dashboard Course Card Options**: Add functionality to the options button on the dashboard course card (e.g., allow uploading/setting an image) *(Optional)*.
 - [x] **Region Selection**: Ensure region selection remains visual only.
 
 ## Course & Roster Management
@@ -16,7 +16,7 @@ A structured tracker for upcoming features, bug fixes, and permission enhancemen
 - [x] **Course Status**: Update course status display on the courses page to "released".
 
 ## Grading Workflow & Tools
-- [saurav_inprogress] **Grading Progress Bar**: Fix the progress bar component and tracking logic for grading progress.
+- [x] **Grading Progress Bar**: Fix the progress bar component and tracking logic for grading progress. *(Per-question bar on each grading card and a Progress tab with by-question and by-student tables; branch `per-question-progress-bar`.)*
 - [saurav_inprogress ] **Sort by Section**: Add section-based sorting to simplify grading distribution and assignments for TAs.
 
 ## Questions, Rubrics & Deductions

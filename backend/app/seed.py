@@ -25,8 +25,9 @@ def seed(url: str) -> None:
     staff = rosters.staff_csv()
     students = rosters.students_csv()
     with psycopg.connect(url) as conn:
-        course_db.ensure_course(conn, course['code'], course['term'])
-        [course_id] = course_db.course_id_by_term(conn, course['code'], course['term'])
+        # merge the create can "do nothing" when you insert same course
+        # but an warning will raise to you.
+        course_id = course_db.create_course(conn, course['code'], course['term'])
         assignments = config.load()["assignments"]
         for row in assignments:
             if not re.fullmatch(SLUG_PATTERN, row["id"]):

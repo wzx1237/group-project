@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from app import status as scans, store
 from app.database import exam as exam_db
+from app.database import regrade as regrade_db
 from app.database import studentpaper as studentpaper_db
 from app.database import workflow as workflow_db
 
@@ -130,14 +131,21 @@ def _collect_problems(conn, exam_id: int, slug: str) -> list[str]:
     return problems
 
 
+def _regrade_problems(conn, exam_id: int) -> list[str]:
+    waiting = regrade_db.waiting_answers(conn, exam_id)
+    return [_plural(waiting, "answer is", "answers are") + " waiting in a regrade queue"] if waiting else []
+
+
 def _grading_problems(conn, exam_id: int, slug: str) -> list[str]:
     ungraded = _count(conn, exam_id, "ungraded")
-    return [_plural(ungraded, "student is", "students are") + " not fully graded"] if ungraded else []
+    problems = [_plural(ungraded, "student is", "students are") + " not fully graded"] if ungraded else []
+    return problems + _regrade_problems(conn, exam_id)
 
 
 def _review_problems(conn, exam_id: int, slug: str) -> list[str]:
     ungraded = _count(conn, exam_id, "without_grade")
-    return [_plural(ungraded, "student has", "students have") + " no grade (missing, excused or ungraded)"] if ungraded else []
+    problems = [_plural(ungraded, "student has", "students have") + " no grade (missing, excused or ungraded)"] if ungraded else []
+    return problems + _regrade_problems(conn, exam_id)
 
 
 # What must be true to move forward into each status.

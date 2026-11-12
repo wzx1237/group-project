@@ -6,6 +6,13 @@ export const partsOf = (questions, qid) => questions.filter((q) => parentQid(q.q
 
 export const partLabel = (label, index) => `${label}(${String.fromCharCode(97 + index)})`
 
+// Q1, Q2, ... and Q1(a), Q1(b) for the parts of Q1, as the rubric panel numbers them.
+export function questionLabel(questions, qid) {
+  const parent = parentQid(qid)
+  const label = `Q${topLevel(questions).findIndex((q) => q.qid === (parent ?? qid)) + 1}`
+  return parent ? partLabel(label, partsOf(questions, parent).findIndex((q) => q.qid === qid)) : label
+}
+
 // The next free ID: Q1, Q2, ... for questions and Q1.1, Q1.2 for the parts of Q1, as in the proposal.
 export function nextQid(questions, parent = null) {
   const used = questions.filter((q) => parentQid(q.qid) === parent).map((q) => Number(q.qid.split(/[Q.]/).pop()))
@@ -22,8 +29,11 @@ export const rubricPoints = (questions) =>
 
 export const gradableQuestions = (questions) => questions.filter((q) => !partsOf(questions, q.qid).length)
 
+// A split criterion is no longer offered but stays on the answers that had it until they are regraded.
+export const allCriteria = (question) => [...question.criteria, ...(question.retired_criteria ?? [])]
+
 export const appliedCriteria = (question, decision) =>
-  question.criteria.filter((c) => decision?.criteria.includes(c.label_id))
+  allCriteria(question).filter((c) => decision?.criteria.includes(c.label_id))
 
 const total = (items, value) => Math.round(items.reduce((sum, item) => sum + value(item), 0) * 100) / 100
 

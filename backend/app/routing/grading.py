@@ -1,15 +1,18 @@
 from typing import Literal, Annotated
 from app.grading.exams import resolve_exam
 from app import workflow
-from app.grading.service import GRADING, GradingService, token
+from app.grading.service import GRADING, GradingService, locked_by, token
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.routing.auth import current_user
 from app.database import decision as decision_db
 from app.database import grading as grading_db
 from app.database import label as label_db
+from app.database import locks as locks_db
+from app.database import student as student_db
+from app.database import studentpaper as studentpaper_db
 
 router = APIRouter(prefix="/api/assignments/{assignment_id}", dependencies=[Depends(current_user)])
 
@@ -33,6 +36,32 @@ class QueueEntry(BaseModel):
     grader_directory_id: str | None = None
 
 
+class QuestionProgress(BaseModel):
+    """How far grading has got on one question, over enrolled students with a paper."""
+
+    qid: str
+    total: int
+    finished: int
+    regrade: int
+
+
+class StudentProgress(BaseModel):
+    """How far grading has got on one student's exam. `answers` is each question's status, in question order."""
+
+    uid: str
+    name: str
+    questions: int
+    finished: int
+    regrade: int
+    status: Literal["not_started", "in_progress", "regrade", "graded"]
+    answers: dict[str, str]
+
+
+class ExamProgress(BaseModel):
+    questions: list[QuestionProgress]
+    students: list[StudentProgress]
+
+
 class ReassignIn(BaseModel):
     student_uid: str
     qid: str
@@ -46,6 +75,7 @@ class DecisionIn(BaseModel):
     score_override: float | None = None  
     comment: str | None = None  # shown to the student
     internal_note: str | None = None  # staff-only, never shown to the student
+    version: int | None = None  # the decision's version the grader last saw, 0 for none; a newer one refuses the save
 
 
 class Decision(BaseModel):
@@ -61,14 +91,34 @@ class Decision(BaseModel):
     updated_at: str
 
 
-class RegradeQueue(BaseModel):
-    """One open regrade task (a criterion split, or a flagged inconsistency), S3.5.3."""
+class ExamComment(BaseModel):
+    """One comment to the student about their whole exam, shown on their report."""
 
-    id: str
+    comment: str | None = Field(default=None, max_length=10000)
+
+
+class ExamCommentIn(ExamComment):
+    # The comment as the grader last loaded it; when sent, a comment changed since then refuses the save.
+    expected: str | None = None
+
+
+class AnswerLock(BaseModel):
+    """A grader working on one answer (qid '' is the overall comment). It expires unless the grading page renews it."""
+
     qid: str
-    reason: str
-    created_at: str
-    pending_student_uids: list[str]
+    holder: str
+    holder_name: str
+    mine: bool
+    expires_at: str
+
+
+class LockIn(BaseModel):
+    take_over: bool = False
+
+
+def lock_out(svc, row):
+    return dict(qid=row['qid'], holder=row['holder'], holder_name=row['holder_name'], mine=row['holder'] == svc.actor,
+                expires_at=row['expires_at'].isoformat())
 
 
 
@@ -103,6 +153,37 @@ def grading_queue(assignment_id: str,svc: Service,section: str | None=None,mine:
         grading_db.seed_exam_mappings(conn, exam)
         rows=grading_db.exam_mappings(conn, exam)
         return [entry(r) for r in rows if not mine or r['directory_id']==svc.actor]
+
+
+def student_progress(rows):
+    """Group (student, question) rows into one entry per student, in the order given."""
+    students = {}
+    for row in rows:
+        found = students.setdefault(row['uid'], dict(uid=row['uid'], name=row['name'], answers={}))
+        found['answers'][row['qid']] = row['status']
+    result = []
+    for found in students.values():
+        states = list(found['answers'].values())
+        finished, regrade = states.count('finished'), states.count('regrade')
+        if regrade:
+            status = 'regrade'
+        elif states and finished == len(states):
+            status = 'graded'
+        elif finished or any(s != 'pending' for s in states):
+            status = 'in_progress'
+        else:
+            status = 'not_started'
+        result.append(dict(found, questions=len(states), finished=finished, regrade=regrade, status=status))
+    return result
+
+
+@router.get('/question-progress',response_model=ExamProgress)
+def question_progress(assignment_id: str,svc: Service):
+    """Grading progress for the whole exam, by question and by student, for any course TA or instructor."""
+    exam = resolve_exam(svc, assignment_id)
+    with svc.access(exam) as (conn,_):
+        return dict(questions=grading_db.exam_question_progress(conn, exam),
+                    students=student_progress(grading_db.exam_student_answers(conn, exam)))
 
 
 @router.post('/questions/{qid}/claim',response_model=QueueEntry)
@@ -172,19 +253,84 @@ def submit_decision(assignment_id: str,student_uid: str,qid: str,body: DecisionI
     with svc.access(exam,qid) as (conn,role):
         # Save through the same permission/label checks and one transaction as the workflow service.
         state=svc._workspace(conn,exam,student_uid,qid,role,writing=True)
+        # Someone saved this answer after the grader last loaded it: refuse rather than overwrite their work.
+        current=decision(svc,exam,student_uid,qid)
+        if body.version is not None and body.version!=(current['version'] if current else 0):
+            raise HTTPException(409,{'message':'This answer changed since you opened it, so it was reloaded','stale':True})
         svc.save(exam,student_uid,qid,labels,body.comment,state['grade_token'],regrade=bool(state['decision']))
         decision_db.set_internal_note(conn, body.internal_note, exam, student_uid, qid)
         return decision(svc,exam,student_uid,qid)
 
 
-@router.get('/regrade-queues',response_model=list[RegradeQueue])
-def regrade_queues(assignment_id: str,svc: Service,qid: str | None=None):
-    # Named independent queues need their own model; never pretend Mapping.status is one.
-    with svc.access(resolve_exam(svc, assignment_id)):
-        raise HTTPException(501,'Named regrade queues are not implemented')
+@router.get('/submissions/{student_uid}/locks',response_model=list[AnswerLock])
+def answer_locks(assignment_id: str,student_uid: str,svc: Service):
+    """Who is grading which of this student's answers right now."""
+    exam=resolve_exam(svc, assignment_id)
+    with svc.access(exam) as (conn,_):
+        return [lock_out(svc,row) for row in locks_db.locks(conn,exam,student_uid)]
 
 
-@router.post('/regrade-queues/{queue_id}/students/{student_uid}/resolve',response_model=Decision)
-def resolve_regrade(assignment_id: str,queue_id: str,student_uid: str,body: DecisionIn,svc: Service):
-    with svc.access(resolve_exam(svc, assignment_id)):
-        raise HTTPException(501,'Named regrade queues are not implemented')
+@router.put('/submissions/{student_uid}/questions/{qid}/lock',response_model=AnswerLock)
+def lock_answer(assignment_id: str,student_uid: str,qid: str,body: LockIn,svc: Service):
+    """Hold an answer while grading it, or renew the hold. Taking over another grader's hold must be asked for."""
+    exam=resolve_exam(svc, assignment_id)
+    with svc.access(exam,qid) as (conn,role):
+        workflow.require(conn,exam,GRADING,'Grading')
+        svc._workspace(conn,exam,student_uid,qid,role)
+        if locks_db.take(conn,svc.actor,exam,student_uid,qid,take_over=body.take_over) is None:
+            raise locked_by(locks_db.holder(conn,exam,student_uid,qid))
+        return lock_out(svc,locks_db.holder(conn,exam,student_uid,qid))
+
+
+@router.post('/submissions/{student_uid}/locks/release',status_code=204)
+def release_answer_locks(assignment_id: str,student_uid: str,svc: Service):
+    """Let go of this grader's holds on the student's answers. A POST, so a closing page can send it as a beacon."""
+    exam=resolve_exam(svc, assignment_id)
+    with svc.access(exam) as (conn,_):
+        locks_db.release(conn,svc.actor,exam,student_uid)
+
+
+def paper_comment(conn,exam,student_uid,*,lock=False):
+    # Recheck enrollment; a retained paper alone does not grant access.
+    if not student_db.lock_exam_enrollment(conn,exam,student_uid):
+        raise HTTPException(404,'Student is not enrolled in this course')
+    row=studentpaper_db.paper_comment(conn,exam,student_uid,lock=lock)
+    if row is None:
+        raise HTTPException(404,'No scanned exam for this student')
+    return row
+
+
+@router.get('/submissions/{student_uid}/comment',response_model=ExamComment)
+def get_exam_comment(assignment_id: str,student_uid: str,svc: Service):
+    """The comment to the student about their whole exam, as opposed to one question."""
+    exam=resolve_exam(svc, assignment_id)
+    with svc.access(exam) as (conn,_):
+        return ExamComment(comment=paper_comment(conn,exam,student_uid)['comments'])
+
+
+@router.put('/submissions/{student_uid}/comment',response_model=ExamComment)
+def set_exam_comment(assignment_id: str,student_uid: str,body: ExamCommentIn,svc: Service):
+    exam=resolve_exam(svc, assignment_id)
+    comment=(body.comment or '').strip() or None
+    with svc.access(exam) as (conn,_):
+        workflow.require(conn,exam,GRADING,'Commenting on an exam')
+        current=paper_comment(conn,exam,student_uid,lock=True)['comments']
+        # Like an answer: saving takes the comment's lock, and a save based on an older comment is refused.
+        if locks_db.take(conn,svc.actor,exam,student_uid,locks_db.COMMENT) is None:
+            raise locked_by(locks_db.holder(conn,exam,student_uid,locks_db.COMMENT),'writing this comment')
+        if 'expected' in body.model_fields_set and (body.expected or None)!=current:
+            raise HTTPException(409,{'message':'This comment changed since you opened it, so it was reloaded','stale':True})
+        studentpaper_db.set_paper_comment(conn,comment,exam,student_uid)
+        return ExamComment(comment=comment)
+
+
+@router.put('/submissions/{student_uid}/comment/lock',response_model=AnswerLock)
+def lock_exam_comment(assignment_id: str,student_uid: str,body: LockIn,svc: Service):
+    """Hold the student's overall comment while writing it, or renew the hold."""
+    exam=resolve_exam(svc, assignment_id)
+    with svc.access(exam) as (conn,_):
+        workflow.require(conn,exam,GRADING,'Commenting on an exam')
+        paper_comment(conn,exam,student_uid)
+        if locks_db.take(conn,svc.actor,exam,student_uid,locks_db.COMMENT,take_over=body.take_over) is None:
+            raise locked_by(locks_db.holder(conn,exam,student_uid,locks_db.COMMENT),'writing this comment')
+        return lock_out(svc,locks_db.holder(conn,exam,student_uid,locks_db.COMMENT))

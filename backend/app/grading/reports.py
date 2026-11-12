@@ -1,4 +1,4 @@
-"""Student reports: scores, applied criteria and comments, then the scanned exam.
+"""Student reports: scores, the exam comment, applied criteria and question comments, then the scanned exam.
 
 Internal notes, criteria that weren't applied, grader names and history are left out.
 """
@@ -94,12 +94,16 @@ def _scan(path):
 
 
 def _html(info, report):
+    # include student section number in report header if present
+    section_info = f" · Section {escape(str(report['section']))}" if report.get('section') else ''
     out = [f"<h1>{escape(info['exam_name'])}</h1>",
            f"<p class='meta'>{escape(info['code'])} · {escape(info['term'])}</p>",
-           f"<p>{escape(report['name'])} · UID {escape(report['uid'])}</p>",
+           f"<p>{escape(report['name'])} · UID {escape(report['uid'])}{section_info}</p>",
            f"<p class='total'>Total score: <b>{points(report['total'])} / {points(report['possible'])}</b></p>"]
     if report['no_show']:
         out.append("<p class='ungraded'>Did not take this assignment; every question scores 0.</p>")
+    if report['comment']:
+        out.append(f"<p class='heading'>Comments</p><p class='comment'>{escape(report['comment'])}</p>")
     for q in report['questions']:
         title = f" · {escape(q['title'])}" if q['title'] else ''
         score = points(q['score']) if q['score'] is not None else '—'

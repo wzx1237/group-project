@@ -45,6 +45,7 @@ export async function saveQuestionsAndRubric(examId, questions) {
       title: q.title?.trim() ?? '',
       total_score: amount(q.total_score),
       region: q.region,
+      grading_method: q.grading_method ?? 'manual',
       scoring: q.scoring ?? 'add',
     })
     for (const c of q.criteria ?? []) {

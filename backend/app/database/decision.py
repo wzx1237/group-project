@@ -100,9 +100,14 @@ class Decision:
     """Compatibility adapter; transaction and audit stay with Database."""
     return _recalculate_score(cursor.connection, record_ID, exam_ID)
 
+"""
+The above part is old database method, the below part this the functions
+Now, function method is available.
+"""
+
 
 def enrolled_decisions(conn, exam_id, uid) -> list[dict]:
-    """Enrolled decisions; return rows in query order."""
+    # Enrolled decisions; return rows in query order.
     return conn.execute(
         """SELECT d.* FROM decision d JOIN assignment e USING(exam_id)
         JOIN enrollment en ON en.uid=d.uid AND en.course_id=e.course_id
@@ -112,16 +117,20 @@ def enrolled_decisions(conn, exam_id, uid) -> list[dict]:
 
 
 def set_internal_note(conn, internal_note, exam_id, uid, qid) -> int:
-    """Set internal note; return the affected row count."""
+    # Set internal note; return the affected row count.
     return conn.execute(
         """UPDATE decision SET internal_note=%s,updated_at=clock_timestamp() WHERE exam_id=%s AND uid=%s AND qid=%s""",
         (internal_note, exam_id, uid, qid),
     ).rowcount
 
 
-def has_saved_decisions(conn, exam_id, uids) -> dict | None:
-    """Has saved decisions; return None when missing."""
-    return conn.execute('SELECT 1 FROM decision WHERE exam_id = %s AND uid = ANY(%s) LIMIT 1', (exam_id, uids)).fetchone()
+def has_saved_decisions(conn, exam_id, uids) -> bool:
+    # Has saved (1 or some) decisions for some student (for certain exam); return None when missing.
+    row = conn.execute('SELECT 1 FROM decision WHERE exam_id = %s AND uid = ANY(%s) LIMIT 1', (exam_id, uids)).fetchone()
+    if row is None:
+      return False
+    else:
+      return True
 
 
 def get_decision(conn, record_ID: int, *, exam_ID: int) -> Dict[str, Any] | None:

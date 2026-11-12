@@ -20,8 +20,8 @@ def add_staff(url: str, directory_id: str, name: str, role: str, email: str | No
     course = config.load()["course"]
     with psycopg.connect(url) as conn:
         staff_db.upsert_staff(conn, directory_id, name, email, role)
-        course_db.ensure_course(conn, course['code'], course['term'])
-        [course_id] = course_db.course_id_by_term(conn, course['code'], course['term'])
+        # merge the return course function in to ensure course
+        course_id = course_db.ensure_course(conn, course['code'], course['term'])
         staff_db.ensure_course_member(conn, course_id, directory_id)
     print(f"Added {directory_id} ({role}) to {course['code']} {course['term']}")
 

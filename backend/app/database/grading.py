@@ -104,6 +104,45 @@ def course_question_progress(conn, actor, course_id) -> list[dict]:
     ).fetchall()
 
 
+def exam_question_progress(conn, exam_id) -> list[dict]:
+    """Per-question progress for one exam over enrolled students with a paper, in qid order.
+
+    Only questions graded on their own count (not a question that is graded through its parts).
+    Each row has qid, total, finished and regrade; unfinished is total - finished - regrade.
+    """
+    return conn.execute(
+        """SELECT r.qid,
+        count(p.uid) AS total,
+        count(m.uid) FILTER (WHERE lower(m.status)='finished') AS finished,
+        count(m.uid) FILTER (WHERE lower(m.status)='regrade') AS regrade
+        FROM assignment e
+        JOIN gradable_question r ON r.exam_id=e.exam_id
+        JOIN studentpaper p ON p.exam_id=e.exam_id
+        JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id AND COALESCE(en.status,'active')='active'
+        LEFT JOIN mapping m ON m.exam_id=r.exam_id AND m.qid=r.qid AND m.uid=p.uid
+        WHERE e.exam_id=%s GROUP BY r.qid ORDER BY r.qid""",
+        (exam_id,),
+    ).fetchall()
+
+
+def exam_student_answers(conn, exam_id) -> list[dict]:
+    """Every (student, question) pair for enrolled students with a paper, ordered by name then qid.
+
+    Each row has uid, name, qid and status (the mapping's status in lower case, 'pending' when it has none).
+    """
+    return conn.execute(
+        """SELECT st.uid, st.name, r.qid, lower(COALESCE(m.status,'pending')) AS status
+        FROM assignment e
+        JOIN studentpaper p ON p.exam_id=e.exam_id
+        JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id AND COALESCE(en.status,'active')='active'
+        JOIN student st ON st.uid=p.uid
+        JOIN gradable_question r ON r.exam_id=e.exam_id
+        LEFT JOIN mapping m ON m.exam_id=r.exam_id AND m.qid=r.qid AND m.uid=p.uid
+        WHERE e.exam_id=%s ORDER BY st.name, st.uid, r.qid""",
+        (exam_id,),
+    ).fetchall()
+
+
 def exam_mappings(conn, exam_id) -> list[dict]:
     """Exam mappings; return rows in query order."""
     return conn.execute('SELECT * FROM mapping WHERE exam_id=%s ORDER BY uid,qid', (exam_id,)).fetchall()

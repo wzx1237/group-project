@@ -41,6 +41,20 @@ export function useRubric(examId) {
     addCriterion: change(rubricService.createRubricCriterion),
     updateCriterion: change(rubricService.updateRubricCriterion),
     removeCriterion: change(rubricService.removeRubricCriterion),
+    // Unlike the others, a split's result (its regrade queue) and its errors go back to the caller.
+    splitCriterion: async (qid, labelId, replacements) => {
+      const result = await rubricService.splitRubricCriterion(examId, qid, labelId, replacements)
+      await reload()
+      return result
+    },
+    // Import calls return summary metadata (such as affected graded questions) and surface errors inside the dialog.
+    importRubric: async (payload) => {
+      const result = payload.markdown !== undefined
+        ? await rubricService.importRubricFromMarkdown(examId, payload)
+        : await rubricService.copyRubricFromExam(examId, payload)
+      await reload()
+      return result
+    },
   }
 
   return { rubric, error, actions }

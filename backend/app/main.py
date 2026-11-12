@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import config, db
 from app.database import Database
-from app.routing import assignments, distribution, grading, reports, rubrics, grading_compat, rubrics_compat
+from app.routing import assignments, distribution, grading, regrade, reports, rubrics, grading_compat, rubrics_compat
 from app.routing.auth import router as auth_router
 from app.settings import Settings
 
@@ -67,7 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(distribution.router)
     app.include_router(assignments.router)
     app.include_router(rubrics.router)
+    app.include_router(rubrics.sources_router)
     app.include_router(grading.router)
+    app.include_router(regrade.router)
     app.include_router(reports.router)
     # Retain existing exam workflow clients while the frontend adopts assignment routes.
     app.include_router(grading_compat.router)

@@ -73,9 +73,13 @@ def lock_exam_membership(conn, exam_id, actor) -> dict | None:
     ).fetchone()
 
 
-def staff_exists(conn, directory_id) -> dict | None:
-    """Staff exists; return None when missing."""
-    return conn.execute('SELECT 1 FROM staff WHERE directory_id = %s', (directory_id,)).fetchone()
+def staff_exists(conn, directory_id) -> bool:
+    # Staff exists; return None when missing.
+    row = conn.execute('SELECT 1 FROM staff WHERE directory_id = %s', (directory_id,)).fetchone()
+    if row is None:
+       return False
+    else:
+       return True
 
 
 def add_course_member(conn, course_id, directory_id) -> int:

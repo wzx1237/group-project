@@ -13,13 +13,15 @@ function formatUploaded(iso) {
   return `${day} at ${time}`
 }
 
-function status({ gradedCount, questionCount }) {
+function status({ gradedCount, questionCount }, regradeCount) {
+  if (regradeCount) return { label: 'Needs regrade', tone: 'warning' }
   if (questionCount && gradedCount === questionCount) return { label: 'Graded', tone: 'outline' }
   return gradedCount ? { label: 'In progress', tone: 'soft' } : { label: 'Not started', tone: 'neutral' }
 }
 
-export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, position, onPrevious, onNext }) {
-  const { label, tone } = status(progress)
+// `regradeCount` is how many open regrade queues hold one of this student's answers.
+export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, position, onPrevious, onNext, regradeCount = 0 }) {
+  const { label, tone } = status(progress, regradeCount)
 
   return (
     <header className={styles.header}>

@@ -14,9 +14,11 @@ const PAGES = {
   upload: 'Upload',
   grade: 'Grading',
   analytics: 'Analytics',
+  progress: 'Grading progress',
   reports: 'Reports',
   questions: 'Questions and regions',
   rubric: 'Rubric',
+  regrade: 'Regrade',
 }
 
 // Courses › CMSC250 › Quiz 1 › Grading, where every crumb but the current page links back

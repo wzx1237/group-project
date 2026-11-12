@@ -57,7 +57,7 @@ def safe_next(path: str | None) -> str:
 
 def is_staff(request: Request, directory_id: str) -> bool:
     with request.app.state.db.connection() as conn:
-        return staff_db.staff_exists(conn, directory_id) is not None
+        return staff_db.staff_exists(conn, directory_id)
 
 
 def signed_in_user(request: Request) -> str | None:

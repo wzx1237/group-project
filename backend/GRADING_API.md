@@ -77,6 +77,29 @@ lock spans browser editing.
 | PUT | `/exams/{exam_ID}/students/{UID}/questions/{QID}/grade` | Replace an existing decision, HTTP 200, preserving record ID |
 | POST | `/exams/{exam_ID}/questions/{QID}/rubric/labels` | Add a criterion and requeue every mapping of that exam/question |
 | GET | `/assignments/{assignment_id}/decisions` | Every saved decision for enrolled students, as `{UID: {QID: decision}}` |
+| GET | `/assignments/{assignment_id}/question-progress` | Grading progress for the whole exam: `{questions: [{qid, total, finished, regrade}], students: [{uid, name, questions, finished, regrade, status, answers}]}` |
+
+`question-progress` covers enrolled students with a paper, for every grader, and
+only questions graded on their own (a question with parts is graded through its
+parts). In `questions`, `total` is the students with a paper, `finished` the answers
+whose mapping is `Finished`, and `regrade` those in `Regrade`; the rest are
+ungraded. `students` has one entry per student, ordered by name. Its `answers` maps
+each `qid` to the mapping status in lower case (`pending` when none), and `status`
+is `graded` (all finished), `regrade` (any waiting), `in_progress` (some work
+saved) or `not_started`. Any TA or instructor in the exam's course may read it;
+others get 403. Students who are no longer enrolled are left out.
+
+```json
+{"questions":[{"qid":"Q1","total":2,"finished":1,"regrade":1}],
+ "students":[{"uid":"123456789","name":"Student","questions":1,"finished":1,"regrade":0,
+              "status":"graded","answers":{"Q1":"finished"}},
+             {"uid":"234567890","name":"Student Two","questions":1,"finished":0,"regrade":1,
+              "status":"regrade","answers":{"Q1":"regrade"}}]}
+```
+
+The frontend reads it in `frontend/src/services/gradingDecisionService.js`
+(`fetchExamProgress`) for the per-question rows on the grade page and for the
+grading progress page at `/courses/{course}/exams/{exam}/progress`.
 
 Grade/regrade body:
 

@@ -1,7 +1,9 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import { ArrowRight } from 'lucide-react'
 import { ExamHeader } from '@/components/exam/examHeader'
+import { Button } from '@/components/ui/Button'
 import { MissingExamsCard } from '@/components/submissions/missingExamsCard'
 import { OcrStudentMatcherList } from '@/components/submissions/ocrStudentMatcherList'
 import { PdfDropZone } from '@/components/submissions/pdfDropZone'
@@ -14,7 +16,7 @@ import styles from './upload.module.css'
 
 // Upload scanned exams, split them into one PDF per student, and match each to the roster.
 export default function UploadSubmissionsPage() {
-  const { examId } = useParams()
+  const { courseId, examId } = useParams()
   const { refresh } = useCourse()
   const { exam, students, error, uploading, upload, match, reprocess, remove, assign, unassign, mark, reload } =
     useExamUploads(examId, refresh)
@@ -43,6 +45,7 @@ export default function UploadSubmissionsPage() {
       <ExamHeader
         meta={`${withExam} of ${students.length} ${students.length === 1 ? 'student has' : 'students have'} an exam`}
         onStatusChange={reload}
+        showGrading={false}
       />
 
       {error && (
@@ -78,6 +81,9 @@ export default function UploadSubmissionsPage() {
 
         <aside className={styles.column}>
           <UploadStatusCard uploads={exam.uploads} students={students} />
+          <Button variant="primary" size="lg" href={`/courses/${courseId}/exams/${examId}/grade`} className={styles.grade}>
+            Open grading <ArrowRight size={16} strokeWidth={1.6} aria-hidden />
+          </Button>
           <MissingExamsCard students={students} open={open} onMark={mark} />
         </aside>
       </div>

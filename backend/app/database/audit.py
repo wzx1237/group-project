@@ -36,6 +36,7 @@ def _directory_lock(directory: Path):
       finally:
         handle.seek(0)
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    # used in Linu system:
     else:
       import fcntl
       fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -87,11 +88,12 @@ class Audit:
           'student'::regclass, 'enrollment'::regclass, 'assignment'::regclass,
           'StudentPaper'::regclass, 'Rubric'::regclass, 'Label'::regclass,
           'Mapping'::regclass, 'Decision'::regclass, 'Rubric_Label'::regclass,
-          'Decision_Label'::regclass, 'assignment_student'::regclass
+          'Decision_Label'::regclass, 'assignment_student'::regclass,
+          'regrade_queue'::regclass, 'regrade_item'::regclass
         ])
       """).fetchone()
     if (not row['has_outbox'] or row['replication_role'] != 'origin'
-        or row['row_triggers'] != 14 or row['truncate_triggers'] != 14):
+        or row['row_triggers'] != 16 or row['truncate_triggers'] != 16):
       raise RuntimeError('Audit schema is missing or disabled; run the supplied schema/migration first')
 
   @contextmanager

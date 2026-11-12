@@ -1,10 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { List, Plus } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Download, List, Plus, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { partsOf, plural, rubricPoints, topLevel as topLevelOf } from '@/lib/rubric'
+import { parentQid, partsOf, plural, rubricPoints, topLevel as topLevelOf } from '@/lib/rubric'
+import { EXAM_COMMENT, ExamCommentCard } from './commentAndNotesBox'
 import { icon } from './icon'
+import { ImportRubricDialog } from './importRubricDialog'
 import { QuestionEditorForm } from './questionEditorForm'
 import { QuestionRubricCard } from './questionRubricCard'
 import styles from './rubricPanel.module.css'
@@ -14,8 +16,42 @@ const NEW_QUESTION = 'new-question'
 // The question an editor key belongs to: 'edit:Q1', 'criterion:Q1:12', 'new-criterion:Q1' and 'new-part:Q1' are Q1's.
 const ownerOf = (key) => (key === NEW_QUESTION ? key : key?.split(':')[1])
 
-export function RubricPanel({ questions, submissionCount, actions, grading, className, allowSubquestions = true }) {
+// `focusQid` (the grading filter's question) is the one card left open, scrolled into view.
+export function RubricPanel({
+  examId = null,
+  examTitle = '',
+  course = null,
+  questions,
+  submissionCount,
+  actions,
+  grading,
+  regrade,
+  questionProgress,
+  className,
+  allowSubquestions = true,
+  canModifyQuestions = true,
+  canModifyRubric = true,
+  onImported,
+  focusQid = null,
+}) {
   const [collapsed, setCollapsed] = useState(() => new Set())
+  const [importing, setImporting] = useState(false)
+  const [importNotice, setImportNotice] = useState(null)
+  const [regradeError, setRegradeError] = useState('')
+  const list = useRef(null)
+  const focusTop = focusQid && (parentQid(focusQid) ?? focusQid)
+
+  // Picking a question in the filter collapses the others; clearing it leaves the cards as they are.
+  const [focusedOn, setFocusedOn] = useState(null)
+  if (focusedOn !== focusTop) {
+    setFocusedOn(focusTop)
+    if (focusTop) setCollapsed(new Set(topLevelOf(questions).map((q) => q.qid).filter((qid) => qid !== focusTop)))
+  }
+
+  useEffect(() => {
+    if (!focusTop) return
+    list.current?.querySelector(`[data-editor-owner="${CSS.escape(focusQid)}"]`)?.scrollIntoView({ block: 'start' })
+  }, [focusTop, focusQid])
   // Only one editor is open at a time, so opening another closes it.
   const [editor, setEditor] = useState(null)
   const current = useRef(null)
@@ -60,6 +96,32 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
     })
   }
 
+  function openImport() {
+    if (current.current && dirty.current) {
+      if (!window.confirm('Discard your unsaved changes?')) return
+    }
+    closeEditor()
+    setImportNotice(null)
+    setRegradeError('')
+    setImporting(true)
+  }
+
+  async function handleImport(payload) {
+    const result = await actions.importRubric(payload)
+    const summary = result?.summary
+    if (summary) setImportNotice(summary)
+    onImported?.(result)
+  }
+
+  async function flagImportedQuestion(qid) {
+    setRegradeError('')
+    try {
+      await regrade.flag(qid, { reason: 'Imported criteria from previous rubric' })
+    } catch (err) {
+      setRegradeError(err.message)
+    }
+  }
+
   return (
     <aside
       className={[styles.pane, className].filter(Boolean).join(' ')}
@@ -77,17 +139,62 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
           </p>
         </div>
         {topLevel.length > 0 && (
-          <Button size="sm" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(topLevel.map((q) => q.qid)))}>
+          <Button size="sm" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set([...topLevel.map((q) => q.qid), EXAM_COMMENT]))}>
             <List {...icon} />
             {collapsed.size ? 'Expand all' : 'Collapse all'}
           </Button>
         )}
       </div>
 
+      {importNotice && (
+        <div className={styles.importBanner} role="status">
+          <div className={styles.importBannerTop}>
+            <span>
+              Imported{' '}
+              {[
+                importNotice.questions_added > 0 && plural(importNotice.questions_added, 'question'),
+                `${importNotice.criteria_added} ${importNotice.criteria_added === 1 ? 'criterion' : 'criteria'}`,
+              ]
+                .filter(Boolean)
+                .join(' and ')}
+              {importNotice.criteria_skipped > 0 ? ` (${importNotice.criteria_skipped} duplicate skipped)` : ''}.
+            </span>
+            <button type="button" className={styles.iconButton} onClick={() => setImportNotice(null)} aria-label="Dismiss notice">
+              <X {...icon} />
+            </button>
+          </div>
+          {regrade && importNotice.affected_graded_qids?.length > 0 && (
+            <div className={styles.importRegrade}>
+              <span>Already-graded answers kept their scores. Review in a regrade queue?</span>
+              <div className={styles.saveActions}>
+                {importNotice.affected_graded_qids.map((qid) => (
+                  <Button key={qid} size="sm" onClick={() => flagImportedQuestion(qid)}>
+                    <RotateCcw {...icon} />
+                    Regrade {qid}
+                  </Button>
+                ))}
+              </div>
+              {regradeError && (
+                <p className={styles.problem} role="alert">
+                  {regradeError}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className={styles.list}>
+      <div ref={list} className={styles.list}>
         {topLevel.length === 0 && editor !== NEW_QUESTION && (
-          <p className={styles.empty}>No questions yet. Add one to start the rubric.</p>
+          <div className={styles.empty}>
+            <p>No questions yet. Add one to start the rubric.</p>
+            {actions?.importRubric && canModifyRubric && (
+              <Button size="sm" onClick={openImport}>
+                <Download {...icon} />
+                Import previous rubric
+              </Button>
+            )}
+          </div>
         )}
         {topLevel.map((question, i) => (
           <QuestionRubricCard
@@ -99,10 +206,24 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
             onToggle={toggle}
             actions={actions}
             grading={grading}
+            regrade={regrade}
+            questionProgress={questionProgress}
             allowSubquestions={allowSubquestions}
             {...editors}
           />
         ))}
+        {grading?.loaded && (
+          <ExamCommentCard
+            // A reload with someone else's comment starts the box over with it.
+            key={`${grading.studentUid}-${grading.examComment ?? ''}`}
+            comment={grading.examComment}
+            onSave={grading.onSaveExamComment}
+            lock={grading.locks?.['']}
+            onTakeOver={() => grading.onTakeOver('')}
+            collapsed={collapsed.has(EXAM_COMMENT)}
+            onToggle={toggle}
+          />
+        )}
         {editor === NEW_QUESTION && (
           <div className={styles.card} data-editor-owner={NEW_QUESTION}>
             <QuestionEditorForm
@@ -115,18 +236,38 @@ export function RubricPanel({ questions, submissionCount, actions, grading, clas
       </div>
 
       <div className={styles.footer}>
-        <div className={styles.notice}>
+        <div className={styles.footerLeft}>
+          {actions?.importRubric && canModifyRubric && (
+            <Button size="sm" onClick={openImport}>
+              <Download {...icon} />
+              Import rubric
+            </Button>
+          )}
         </div>
-        <Button
-          variant="primary"
-          data-editor-owner={NEW_QUESTION}
-          onClick={() => openEditor(NEW_QUESTION)}
-          disabled={editor === NEW_QUESTION}
-        >
-          <Plus {...icon} size={16} />
-          Add question
-        </Button>
+        {canModifyQuestions && canModifyRubric && (
+          <Button
+            variant="primary"
+            data-editor-owner={NEW_QUESTION}
+            onClick={() => openEditor(NEW_QUESTION)}
+            disabled={editor === NEW_QUESTION}
+          >
+            <Plus {...icon} size={16} />
+            Add question
+          </Button>
+        )}
       </div>
+
+      {importing && (
+        <ImportRubricDialog
+          examId={examId}
+          examTitle={examTitle}
+          course={course}
+          targetQuestions={questions}
+          canModifyQuestions={canModifyQuestions}
+          onImport={handleImport}
+          onClose={() => setImporting(false)}
+        />
+      )}
     </aside>
   )
 }

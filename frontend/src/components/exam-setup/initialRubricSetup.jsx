@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { RubricPanel } from '@/components/grading/rubricPanel'
 import { nextQid, parentQid, partsOf } from '@/lib/rubric'
+import { applyRubricImport } from '@/lib/rubricImport'
 import styles from './initialRubricSetup.module.css'
 
 // Criteria made here have no database ID yet; saving treats any non-numeric ID as new. Random rather than a counter,
@@ -36,8 +37,13 @@ function startingRubric(questions, rubric = []) {
 
 // Step 3 of exam setup: the same rubric editor as the grading page, kept in memory until the exam is saved
 export function InitialRubricSetup({
+  examId = null,
+  examTitle = '',
+  course = null,
   questions = [],
   rubric,
+  canModifyQuestions = true,
+  canModifyRubric = true,
   onBack,
   onNext,
   onChange,
@@ -98,6 +104,31 @@ export function InitialRubricSetup({
       update(qid, (q) => ({ ...q, criteria: q.criteria.filter((c) => c.label_id !== labelId) }))
       return true
     },
+    async importRubric({
+      sourceQuestions,
+      mode,
+      source_qids,
+      question_mappings,
+      include_question_details,
+      replace_unused_criteria,
+      copy_regions,
+    }) {
+      const result = applyRubricImport(
+        items,
+        sourceQuestions,
+        {
+          mode,
+          sourceQids: source_qids ?? null,
+          questionMappings: question_mappings ?? [],
+          includeQuestionDetails: include_question_details ?? false,
+          replaceUnusedCriteria: replace_unused_criteria ?? false,
+          copyRegions: copy_regions ?? false,
+        },
+        localId,
+      )
+      setItems(result.questions)
+      return result
+    },
   }
 
   return (
@@ -109,7 +140,16 @@ export function InitialRubricSetup({
         </p>
       </div>
 
-      <RubricPanel className={styles.panel} questions={items} actions={actions} />
+      <RubricPanel
+        className={styles.panel}
+        examId={examId}
+        examTitle={examTitle}
+        course={course}
+        questions={items}
+        actions={actions}
+        canModifyQuestions={canModifyQuestions}
+        canModifyRubric={canModifyRubric}
+      />
 
       <div className={styles.actions}>
         <Button variant="secondary" onClick={onBack}>

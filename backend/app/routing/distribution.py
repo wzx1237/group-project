@@ -160,16 +160,17 @@ class StudentsIn(BaseModel):
 
 
 def _resolve_course_id(conn, course_id: int | str) -> int:
+    # TODO: I am not sure what this function done, I think there's a lot of redundent things we need to remove.
     cid = None
     if isinstance(course_id, int) or (isinstance(course_id, str) and course_id.isdigit()):
         cid = int(course_id)
-        row = course_db.course_id_row(conn, cid)
-        if row:
-            return row["course_id"]
+        if course_db.course_exists(conn, cid):
+            return cid
     row = course_db.course_by_code(conn, str(course_id))
     if row:
         return row["course_id"]
     if cid is not None:
+        # weird behavior...
         return cid
     raise HTTPException(404, "Course not found")
 

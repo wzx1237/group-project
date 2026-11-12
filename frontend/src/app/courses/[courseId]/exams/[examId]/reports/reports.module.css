@@ -57,6 +57,28 @@
   gap: 8px;
 }
 
+/* section filter controls */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.filterLabel {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 13px;
+}
+
 .tableWrap {
   overflow-x: auto;
 }

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { formatPoints, scoreWith, scoringOf } from '@/lib/rubric'
+import { SignedPointsInput } from './signedPointsInput'
 import styles from './rubricPanel.module.css'
 
 export function CriterionEditorForm({ initialCriterion, question, onSave, onCancel }) {
@@ -21,12 +22,6 @@ export function CriterionEditorForm({ initialCriterion, question, onSave, onCanc
   const points = Number(amount)
   const valid = amount.trim() !== '' && Number.isFinite(points) && points >= 0
   const adjustment = negative && points ? -points : points
-
-  // Typing a sign flips the toggle, so "-2" and "2" both work.
-  function handleAmount(value) {
-    if (/^[-+]/.test(value)) setNegative(value[0] === '-')
-    setAmount(value.replace(/^[-+]/, ''))
-  }
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -48,25 +43,16 @@ export function CriterionEditorForm({ initialCriterion, question, onSave, onCanc
           <label className={styles.fieldLabel} htmlFor={pointsId}>
             Points
           </label>
-          <div className={styles.signed}>
-            <button
-              type="button"
-              className={styles.sign}
-              onClick={() => setNegative(!negative)}
-              aria-label={negative ? 'Takes points off. Switch to adding points' : 'Adds points. Switch to taking points off'}
-            >
-              {negative ? '−' : '+'}
-            </button>
-            <input
-              ref={firstField}
-              id={pointsId}
-              className={styles.input}
-              inputMode="decimal"
-              placeholder="2"
-              value={amount}
-              onChange={(e) => handleAmount(e.target.value)}
-            />
-          </div>
+          <SignedPointsInput
+            id={pointsId}
+            inputRef={firstField}
+            negative={negative}
+            amount={amount}
+            onChange={(next) => {
+              setNegative(next.negative)
+              setAmount(next.amount)
+            }}
+          />
         </div>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Title · shown to students</span>

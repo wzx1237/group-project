@@ -50,3 +50,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.grade {
+  width: 100%;
+  justify-content: center;
+}

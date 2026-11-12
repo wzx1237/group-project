@@ -11,7 +11,14 @@ const files = (examId) => `/api/assignments/${examId}`
 
 export const reportUrl = (examId, uid, download = false) =>
   `${files(examId)}/reports/${uid}.pdf${download ? '?download=true' : ''}`
-export const reportsZipUrl = (examId) => `${files(examId)}/reports.zip`
+// student reports zip url with optional section filter or grouping
+export const reportsZipUrl = (examId, options = {}) => {
+  const params = new URLSearchParams()
+  if (options.section) params.set('section', options.section)
+  if (options.grouped) params.set('grouped', 'true')
+  const qs = params.toString()
+  return `${files(examId)}/reports.zip${qs ? `?${qs}` : ''}`
+}
 export const gradesCsvUrl = (examId) => `${files(examId)}/grades.csv`
 
 // Every student on the roster with their exam's score, added up the way the grading page does.
@@ -29,6 +36,7 @@ export async function fetchStudentScores(examId) {
     return {
       uid: s.uid,
       name: s.name,
+      section: s.section ?? null,
       status: s.status, // null while the assignment is in draft
       hasExam: Boolean(s.submission),
       noShow,
@@ -41,6 +49,9 @@ export async function fetchStudentScores(examId) {
   })
 }
 
-export async function downloadScopedReportsZip(examId, { scope, sectionIds, studentUids }) {}
+// download reports zip scoped or grouped by section
+export async function downloadScopedReportsZip(examId, { section = null, grouped = false } = {}) {
+  window.location.assign(reportsZipUrl(examId, { section, grouped }))
+}
 export async function exportArchivalBundle(examId, { includeScans, includeGradingRecords }) {}
 export async function deleteExamData(examId, { deleteScansOnly }) {}

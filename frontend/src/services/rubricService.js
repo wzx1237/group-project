@@ -59,7 +59,31 @@ export async function removeRubricCriterion(examId, qid, labelId) {
   await request(`${base(examId)}/criteria/${labelId}`, { method: 'DELETE' })
 }
 
-export async function splitRubricCriterion(examId, qid, labelId, replacementCriteria, regradeQueueName) {}
-export async function importRubricFromMarkdown(examId, markdownContent) {}
-export async function exportRubricToMarkdown(examId) {}
-export async function copyRubricFromExam(targetExamId, sourceExamId) {}
+// Replaces a criterion with narrower ones; answers that had it wait in the returned regrade queue (null if none did).
+export async function splitRubricCriterion(examId, qid, labelId, replacements) {
+  return request(`${base(examId)}/criteria/${labelId}/split`, send('POST', { replacements }))
+}
+
+export async function fetchRubricSources(excludeAssignmentId = null) {
+  const query = excludeAssignmentId ? `?${new URLSearchParams({ exclude_assignment_id: excludeAssignmentId })}` : ''
+  return request(`/rubrics/sources${query}`)
+}
+
+export async function importRubricFromMarkdown(examId, markdownOrOptions) {
+  const payload = typeof markdownOrOptions === 'string' ? { markdown: markdownOrOptions } : markdownOrOptions
+  const rubric = await request(`${base(examId)}/import`, send('POST', payload))
+  rubric.questions.sort((a, b) => a.qid.localeCompare(b.qid, undefined, { numeric: true }))
+  return rubric
+}
+
+export async function exportRubricToMarkdown(examId) {
+  const blob = await request(`${base(examId)}/export`)
+  return blob.text()
+}
+
+export async function copyRubricFromExam(targetExamId, sourceOrOptions) {
+  const payload = typeof sourceOrOptions === 'string' ? { from_assignment_id: sourceOrOptions } : sourceOrOptions
+  const rubric = await request(`${base(targetExamId)}/copy`, send('POST', payload))
+  rubric.questions.sort((a, b) => a.qid.localeCompare(b.qid, undefined, { numeric: true }))
+  return rubric
+}

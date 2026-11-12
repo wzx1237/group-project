@@ -8,6 +8,7 @@ import time
 import uuid
 
 import psycopg
+import pymupdf
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
@@ -18,6 +19,8 @@ from fastapi.testclient import TestClient
 
 from app import config, db
 from app.database import Database
+from app.database import grading as grading_db
+from app.database import studentpaper as studentpaper_db
 from app.grading.service import GradingService
 from app.main import create_app
 from app.routing.auth import current_user
@@ -341,25 +344,71 @@ def test_label_recalculation_failure_rolls_back_definition(native, monkeypatch):
     assert database.get_decision_by_student_question('123456789','Q1',exam_ID=1)['scores']==4
 
 
-
-def test_conn_label_edit_and_regrade_share_outer_transaction(native):
-    from app.database import decision, grading, label
-
-    client, database, _, _, _ = native
-    assert save(client, [1, 2]).status_code == 201
-    with pytest.raises(RuntimeError, match="abort"):
-        with database.audit_context(actor_ID="teacher"), database.transaction(), database.get_connection() as conn:
-            assert label.edit_label(conn, 2, "Changed", None, -2, exam_ID=1)
-            grading.mark_question_for_regrade(conn, 1, "Q1")
-            assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 3
-            raise RuntimeError("abort")
+def test_exam_comment_is_per_student_and_on_the_report(native):
+    client, database, _, path, _ = native
+    url = '/api/assignments/1/submissions/123456789/comment'
+    assert client.get(url).json() == {'comment': None}
+    saved = client.put(url, json={'comment': '  Strong work overall.  '})
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == {'comment': 'Strong work overall.'}
+    assert client.get(url).json() == {'comment': 'Strong work overall.'}
+    # Another student's paper on the same exam keeps its own comment.
+    assert client.get('/api/assignments/1/submissions/234567890/comment').json() == {'comment': None}
+    assert client.put(url, json={'comment': 'x' * 10001}).status_code == 422
+    assert client.get('/api/assignments/1/submissions/999999999/comment').status_code == 404
+    assert client.get('/api/assignments/2/submissions/123456789/comment').status_code == 403
+    (path / 'paper.pdf').unlink()  # the fixture's placeholder scan isn't a real PDF to append
+    report = client.get('/api/assignments/1/reports/123456789.pdf')
+    assert report.status_code == 200, report.text
+    with pymupdf.open('pdf', report.content) as doc:
+        assert 'Strong work overall.' in doc[0].get_text()
+    # Unmatching the scan keeps a paper whose comment would otherwise be lost.
     with database.get_connection() as conn:
-        assert label.get_label(conn, 2, exam_ID=1)["deduction"] == -1
-        assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 4
-        assert grading.mapping_row(conn, 1, "123456789", "Q1")["status"] == "Finished"
-    with database.audit_context(actor_ID="teacher"), database.transaction(), database.get_connection() as conn:
-        label.edit_label(conn, 2, "Changed", None, -2, exam_ID=1)
-        grading.mark_question_for_regrade(conn, 1, "Q1")
+        assert studentpaper_db.prune_ungraded_papers(conn, 1, ['234567890']) == 0
+    set_status(database, 'draft')
+    assert client.put(url, json={'comment': 'Too early'}).status_code == 409
+    set_status(database, 'grading')
+    # An empty comment clears it.
+    assert client.put(url, json={'comment': '   '}).json() == {'comment': None}
     with database.get_connection() as conn:
-        assert decision.get_decision_by_student_question(conn, "123456789", "Q1", exam_ID=1)["scores"] == 3
-        assert grading.mapping_row(conn, 1, "123456789", "Q1")["status"] == "Regrade"
+        assert conn.execute("SELECT comments FROM studentpaper WHERE exam_id=1 AND uid='123456789'").fetchone()['comments'] is None
+
+
+def test_exam_question_progress_query_and_route(native):
+    client, database, _, _, app = native
+    url = '/api/assignments/1/question-progress'
+    # Nothing is finished yet: every question counts both enrolled papers.
+    start = client.get(url).json()
+    assert start['questions'] == [
+        {'qid': 'Q1', 'total': 2, 'finished': 0, 'regrade': 0},
+        {'qid': 'Q2', 'total': 2, 'finished': 0, 'regrade': 0},
+    ]
+    assert [(s['name'], s['status'], s['finished']) for s in start['students']] == [
+        ('Student', 'not_started', 0), ('Student Two', 'not_started', 0)]
+    with database.get_connection() as conn:
+        # A paper for a student who is not enrolled must not count, even with a finished mapping.
+        conn.execute("INSERT INTO student(uid,name) VALUES ('345678901','Dropped')")
+        conn.execute("INSERT INTO studentpaper VALUES (1,'345678901','paper.pdf',NULL)")
+        conn.execute("INSERT INTO mapping VALUES (1,'345678901','Q1','alice','Finished')")
+        conn.execute("UPDATE mapping SET status='Finished' WHERE uid='123456789' AND qid='Q1'")
+        conn.execute("UPDATE mapping SET status='Regrade' WHERE uid='234567890' AND qid='Q1'")
+        conn.execute("INSERT INTO mapping VALUES (1,'123456789','Q2','bob','finished')")
+        rows = grading_db.exam_question_progress(conn, 1)
+    assert rows == [
+        {'qid': 'Q1', 'total': 2, 'finished': 1, 'regrade': 1},
+        {'qid': 'Q2', 'total': 2, 'finished': 1, 'regrade': 0},
+    ]
+    body = client.get(url).json()
+    assert body['questions'] == rows
+    # One row per enrolled student, by name; the dropped student is left out.
+    assert body['students'] == [
+        {'uid': '123456789', 'name': 'Student', 'questions': 2, 'finished': 2, 'regrade': 0, 'status': 'graded',
+         'answers': {'Q1': 'finished', 'Q2': 'finished'}},
+        {'uid': '234567890', 'name': 'Student Two', 'questions': 2, 'finished': 0, 'regrade': 1, 'status': 'regrade',
+         'answers': {'Q1': 'regrade', 'Q2': 'pending'}},
+    ]
+    # Course staff only.
+    with database.get_connection() as conn:
+        conn.execute("INSERT INTO staff VALUES ('carol','Carol',NULL,'ta')")
+    app.dependency_overrides[current_user] = lambda: 'carol'
+    assert client.get(url).status_code == 403

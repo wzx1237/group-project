@@ -38,19 +38,43 @@ def student_report(assignment_id: str, student_uid: str, svc: Service, download:
 
 
 @router.get('/reports.zip')
-def all_reports(assignment_id: str, svc: Service):
+def all_reports(assignment_id: str, svc: Service, section: str | None = None, grouped: bool = False):
     exam = resolve_exam(svc, assignment_id)
     with svc.access(exam) as (conn, _):
         info, reports = exam_reports(conn, exam)
-    # Each report carries a full scan, so a class adds up to gigabytes: build the ZIP on disk.
-    # Scans are already compressed, so the PDFs are stored as they are.
+
+    # filter reports by section if specified
+    if section:
+        target = section.strip()
+        if target.lower() in ('unassigned', 'none', 'no-section'):
+            reports = [r for r in reports if not (r.get('section') or '').strip()]
+        else:
+            reports = [r for r in reports if (r.get('section') or '').strip() == target]
+
+    # each report carries a full scan, so build the zip on disk
     file = tempfile.TemporaryFile()
     with zipfile.ZipFile(file, 'w') as archive:
         for report in reports:
-            archive.writestr(filename(report), report_pdf(info, report))
+            # group reports into section folders when requested
+            if grouped and not section:
+                sec = (report.get('section') or '').strip()
+                folder = f'Section {sec}' if sec else 'Unassigned'
+                arcname = f'{folder}/{filename(report)}'
+            else:
+                arcname = filename(report)
+            archive.writestr(arcname, report_pdf(info, report))
     file.seek(0)
+
+    # determine zip download filename
+    if section:
+        disp_name = f'{assignment_id} section {section} reports.zip'
+    elif grouped:
+        disp_name = f'{assignment_id} reports (grouped by section).zip'
+    else:
+        disp_name = f'{assignment_id} reports.zip'
+
     return StreamingResponse(_chunks(file), media_type='application/zip',
-                             headers={'Content-Disposition': f'attachment; filename="{assignment_id} reports.zip"'})
+                             headers={'Content-Disposition': f'attachment; filename="{disp_name}"'})
 
 
 def _chunks(file):

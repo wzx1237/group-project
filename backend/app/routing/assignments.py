@@ -83,7 +83,8 @@ def edit_course(course_id: int, body: CourseEdit, request: Request, user: Staff)
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
         if not assignments.is_member(conn, course_id, user):
             raise HTTPException(403, 'Not a member of this course')
-        existing = course_db.course_row(conn, course_id)
+        # change to course exist
+        existing = course_db.course_exists(conn, course_id)
         if existing is None:
             raise HTTPException(404, 'Course not found')
 

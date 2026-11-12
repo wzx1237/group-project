@@ -412,6 +412,7 @@
 
 .counts {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   margin: 0;
 }
@@ -473,4 +474,47 @@
   .assignPanel {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Upload Status: one bar split by student outcome */
+
+.stackWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stack {
+  display: flex;
+  flex: 1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--border);
+}
+
+.stack > span {
+  flex-basis: 0;
+}
+
+.segMatched {
+  background: var(--accent);
+}
+
+.segNoShow {
+  background: var(--danger);
+}
+
+.segExcused {
+  background: #e6b422;
+}
+
+.segUnmatched {
+  background: var(--surface-disabled);
+}
+
+.stackPercent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
 }

@@ -168,8 +168,13 @@ export default function EditAssignmentPage() {
 
         {currentStep === 3 && (
           <InitialRubricSetup
+            examId={examId}
+            examTitle={examData.title}
+            course={course}
             questions={examData.questions}
             rubric={examData.rubric}
+            canModifyQuestions={!locked}
+            canModifyRubric={!closed}
             onChange={saveRubric}
             onBack={() => setCurrentStep(locked ? 1 : 2)}
             onNext={handleSaveAll}

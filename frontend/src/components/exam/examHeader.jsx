@@ -8,6 +8,7 @@ import { ReleaseGrades } from '@/components/reports/releaseGrades'
 import { formatDateTime } from '@/components/submissions/format'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { WorkflowMap } from './workflowMap'
 import { useCourse } from '@/context/CourseContext'
 import { changeStatus } from '@/exam-distribution/lib/api'
 import { ASSIGNMENT_STATUSES, ORDER, formatDue } from '@/exam-distribution/lib/status'
@@ -15,12 +16,13 @@ import styles from './examHeader.module.css'
 
 const TABS = [
   ['upload', 'Upload'],
+  ['progress', 'Progress'],
   ['analytics', 'Analytics'],
   ['reports', 'Reports'],
 ]
 
 // The title, workflow status and its next step, and the tabs shared by an exam's pages.
-export function ExamHeader({ meta, onStatusChange }) {
+export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
   const { courseId, examId } = useParams()
   const pathname = usePathname()
   const { course, assignments, refresh } = useCourse()
@@ -65,30 +67,36 @@ export function ExamHeader({ meta, onStatusChange }) {
     <header className={styles.header}>
       <div className={styles.top}>
         <div>
-          <h1 className={styles.title}>{exam.title}</h1>
+          <div className={styles.heading}>
+            <h1 className={styles.title}>{exam.title}</h1>
+            {status && <Badge tone={status.tone}>{status.label}</Badge>}
+          </div>
+          {course?.role === 'instructor' && (
+            <div className={styles.edit}>
+              <Button href={`${base}/edit`}>
+                <Pencil size={13} aria-hidden /> Edit Assignment
+              </Button>
+            </div>
+          )}
           <p className={styles.meta}>{[exam.due && `Due ${formatDue(exam.due)}`, meta].filter(Boolean).join(' · ')}</p>
         </div>
-        <div className={styles.actions}>
-          {course?.role === 'instructor' && (
-            <Button href={`${base}/edit`}>
-              <Pencil size={13} aria-hidden /> Edit Assignment
-            </Button>
-          )}
-          {status && <Badge tone={status.tone}>{status.label}</Badge>}
-          {exam.released_at && <span className={styles.meta}>Released {formatDateTime(exam.released_at)}</span>}
-          {previous && (
-            <Button onClick={moveBack} disabled={saving}>
-              {exam.status === 'closed' ? 'Reopen' : 'Move back'}
-            </Button>
-          )}
-          {canAdvance && (
-            <Button onClick={advance} disabled={saving}>
-              {status.action}
-            </Button>
-          )}
-          <Button variant="primary" href={`${base}/grade`}>
-            Open grading <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
-          </Button>
+        <div className={styles.side}>
+          <WorkflowMap
+            current={exam.status}
+            backLabel={exam.status === 'closed' ? 'Reopen' : 'Move back'}
+            forwardLabel={status?.action}
+            onBack={previous ? moveBack : undefined}
+            onForward={canAdvance ? advance : undefined}
+            disabled={saving}
+          />
+          <div className={styles.actions}>
+            {exam.released_at && <span className={styles.meta}>Released {formatDateTime(exam.released_at)}</span>}
+            {showGrading && (
+              <Button variant="primary" href={`${base}/grade`}>
+                Open grading <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

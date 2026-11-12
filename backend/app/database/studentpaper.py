@@ -24,9 +24,9 @@ class StudentPaper:
 
 
 def prune_ungraded_papers(conn, exam_id, matched) -> int:
-    """Remove unmatched papers only when no saved decision would be lost."""
+    """Remove unmatched papers only when no saved decision or exam comment would be lost."""
     return conn.execute(
-        """DELETE FROM studentpaper p WHERE p.exam_id = %s AND NOT p.uid = ANY(%s)
+        """DELETE FROM studentpaper p WHERE p.exam_id = %s AND NOT p.uid = ANY(%s) AND p.comments IS NULL
         AND NOT EXISTS (SELECT 1 FROM decision d WHERE d.exam_id = p.exam_id AND d.uid = p.uid)""",
         (exam_id, matched),
     ).rowcount
@@ -35,6 +35,18 @@ def prune_ungraded_papers(conn, exam_id, matched) -> int:
 def paper_path(conn, exam_id, uid) -> dict | None:
     """Return the saved scan reference; filesystem authorization belongs to the service."""
     return conn.execute('SELECT scanned_pdf FROM studentpaper WHERE exam_id=%s AND uid=%s', (exam_id, uid)).fetchone()
+
+
+def paper_comment(conn, exam_id, uid, *, lock=False) -> dict | None:
+    """The student's exam-wide comment, locked for update when asked; return None when there is no paper."""
+    return conn.execute('SELECT comments FROM studentpaper WHERE exam_id=%s AND uid=%s' + (' FOR UPDATE' if lock else ''),
+                        (exam_id, uid)).fetchone()
+
+
+def set_paper_comment(conn, comment, exam_id, uid) -> int:
+    """Set the exam-wide comment (None clears it); return the affected row count."""
+    return conn.execute('UPDATE studentpaper SET comments=%s WHERE exam_id=%s AND uid=%s',
+                        (comment, exam_id, uid)).rowcount
 
 
 def sync_scanned_papers(conn, exam_id, uids, scan_paths, course_id) -> int:

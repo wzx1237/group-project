@@ -143,6 +143,8 @@ export default function ExamSetupWizardPage() {
 
         {currentStep === 3 && (
           <InitialRubricSetup
+            examTitle={examData.title}
+            course={course}
             questions={examData.questions}
             rubric={examData.rubric}
             onChange={saveRubric}

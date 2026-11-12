@@ -40,13 +40,14 @@ def selected_label_details(conn, exam_id) -> list[dict]:
 
 def exam_students(conn, exam_id, student) -> list[dict]:
     """Exam students; return rows in query order."""
+    # query enrolled students with their section and exam status
     return conn.execute(
-        """SELECT p.uid, s.name, p.scanned_pdf, false AS no_show FROM studentpaper p
+        """SELECT p.uid, s.name, en.section, p.scanned_pdf, p.comments AS comment, false AS no_show FROM studentpaper p
         JOIN student s USING(uid) JOIN assignment e USING(exam_id)
         JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
         WHERE p.exam_id=%s AND (%s::text IS NULL OR p.uid=%s)
         UNION ALL
-        SELECT a.uid, s.name, NULL, true FROM assignment_student a JOIN student s USING(uid)
+        SELECT a.uid, s.name, en.section, NULL, NULL, true FROM assignment_student a JOIN student s USING(uid)
         JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=a.uid AND en.course_id=e.course_id
         WHERE a.exam_id=%s AND a.status='no_show' AND (%s::text IS NULL OR a.uid=%s)
         AND NOT EXISTS (SELECT 1 FROM studentpaper p WHERE p.exam_id=a.exam_id AND p.uid=a.uid)

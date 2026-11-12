@@ -83,5 +83,26 @@
  * @property {string[]} pendinguids - list of student uids remaining to be re-evaluated
  */
 
+/**
+ * represents grading progress on one question across an exam
+ * @typedef {object} questionprogress
+ * @property {string} qid - question identifier
+ * @property {number} total - enrolled students with a paper for the exam
+ * @property {number} finished - answers fully graded
+ * @property {number} regrade - answers waiting on a regrade
+ */
+
+/**
+ * represents grading progress on one student's exam
+ * @typedef {object} studentprogress
+ * @property {string} uid - student university id
+ * @property {string} name - student name
+ * @property {number} questions - questions graded on their own
+ * @property {number} finished - answers fully graded
+ * @property {number} regrade - answers waiting on a regrade
+ * @property {'not_started' | 'in_progress' | 'regrade' | 'graded'} status - overall state of this student's exam
+ * @property {Object<string, string>} answers - each question's status, by qid
+ */
+
 // export empty object so this file can be used for type checking
 export default {}

@@ -100,107 +100,99 @@ def insert_question(conn, exam_id, qid, grading_method, total_scores) -> int:
     ).rowcount
 
 
-def get_rubric(conn, QID: str, *, exam_ID: int) -> Dict[str, Any] | None:
-    """Return one full question using the common query and audited connection."""
-    return question_row(conn, exam_ID, QID)
+def resolve_assignment_exam_id(conn, assignment_id: str | None) -> int | None:
+    """Resolve an assignment slug or numeric ID to its exam_id without mutating data."""
+    if not assignment_id:
+        return None
+    if assignment_id.isdigit():
+        return int(assignment_id)
+    row = conn.execute('SELECT exam_id FROM assignment WHERE slug = %s', (assignment_id,)).fetchone()
+    return row['exam_id'] if row else None
 
 
-def get_rubric_labels(conn, QID: str, *, exam_ID: int) -> List[Dict[str, Any]]:
-    """Return the current labels and question ID; history lives in audit JSONL."""
-    with conn.cursor() as cursor:
-      cursor.execute(
-        """
-        SELECT l.*, rl.QID FROM Rubric_Label AS rl JOIN Label AS l
-        ON (l.exam_ID, l.Label_ID) = (rl.exam_ID, rl.Label_ID)
-        WHERE rl.exam_ID = %s AND rl.QID = %s ORDER BY l.Label_ID
-        """,
-        (exam_ID, QID)
-      )
-      return cursor.fetchall()
+def import_sources(conn, actor: str, exclude_exam_id: int | None = None) -> list[dict]:
+    """List assignments with a rubric in courses the actor staffs, excluding `exclude_exam_id`."""
+    return conn.execute(
+        """SELECT a.exam_id, a.slug AS assignment_id, a.exam_name AS title, a.kind, a.due, a.status,
+                  c.course_id, c.code AS course_code, c.term AS course_term, c.title AS course_title,
+                  (SELECT count(*) FROM rubric r WHERE r.exam_id = a.exam_id AND strpos(r.qid, '.') = 0) AS question_count,
+                  (SELECT count(*) FROM gradable_question gq WHERE gq.exam_id = a.exam_id) AS gradable_count,
+                  (SELECT count(*) FROM rubric_label rl JOIN label l USING (exam_id, label_id)
+                   WHERE rl.exam_id = a.exam_id AND l.retired_at IS NULL) AS criteria_count,
+                  COALESCE((SELECT sum(gq.total_scores) FROM gradable_question gq WHERE gq.exam_id = a.exam_id), 0) AS total_points
+           FROM assignment a
+           JOIN course c USING (course_id)
+           JOIN course_staff cs USING (course_id)
+           WHERE cs.directory_id = %s
+             AND (%s::int IS NULL OR a.exam_id <> %s)
+             AND EXISTS (SELECT 1 FROM rubric r WHERE r.exam_id = a.exam_id)
+           ORDER BY c.course_id DESC, a.due DESC NULLS LAST, a.exam_id DESC""",
+        (actor, exclude_exam_id, exclude_exam_id),
+    ).fetchall()
 
 
-def add_rubric_label(conn, QID: str, label: int, *, exam_ID: int) -> int:
-    """Append one current label; a duplicate returns its ID without another write."""
-    with conn.cursor() as cursor:
-      _lock_rubric(conn, QID, exam_ID)
-      # The trigger records the inserted row only if the relationship is new.
-      cursor.execute(
-        """
-        INSERT INTO Rubric_Label (exam_ID, QID, Label_ID) VALUES (%s, %s, %s)
-        ON CONFLICT (exam_ID, QID, Label_ID) DO NOTHING
-        """,
-        (exam_ID, QID, label)
-      )
-      return label
+def exam_rubric_rows(conn, exam_id: int) -> list[dict]:
+    """Return all rubric question rows for an exam."""
+    return conn.execute('SELECT * FROM rubric WHERE exam_id = %s ORDER BY qid', (exam_id,)).fetchall()
 
 
-def add_rubric_labels(conn, QID: str, labels: List[int], *, exam_ID: int) -> bool:
-    """Replace the current label set, including clearing it with an empty list."""
-    if len(labels) != len(set(labels)):
-      raise ValueError('labels must not contain duplicates')
-    with conn.cursor() as cursor:
-      _lock_rubric(conn, QID, exam_ID)
-      # Delete/insert and their before/after audit rows share this one transaction.
-      cursor.execute('DELETE FROM Rubric_Label WHERE exam_ID = %s AND QID = %s', (exam_ID, QID))
-      if labels:
-        cursor.executemany(
-          'INSERT INTO Rubric_Label (exam_ID, QID, Label_ID) VALUES (%s, %s, %s)',
-          [(exam_ID, QID, label) for label in labels]
-        )
-      return True
+def exam_active_labels(conn, exam_id: int) -> list[dict]:
+    """Return active (non-retired) criteria linked to each question of an exam."""
+    return conn.execute(
+        """SELECT rl.qid, l.label_id, l.title, l.description, l.deduction
+           FROM rubric_label rl
+           JOIN label l USING (exam_id, label_id)
+           WHERE rl.exam_id = %s AND l.retired_at IS NULL
+           ORDER BY rl.qid, l.label_id""",
+        (exam_id,),
+    ).fetchall()
 
 
-def remove_rubric_label(conn, QID: str, Label_ID: int, *, exam_ID: int) -> bool:
-    """Delete one current label and report whether a relationship was removed."""
-    with conn.cursor() as cursor:
-      _lock_rubric(conn, QID, exam_ID)
-      # Removing the last label is safe because no older relationship rows remain.
-      cursor.execute(
-        'DELETE FROM Rubric_Label WHERE exam_ID = %s AND QID = %s AND Label_ID = %s',
-        (exam_ID, QID, Label_ID)
-      )
-      return cursor.rowcount > 0
+def gradable_qids(conn, exam_id: int) -> set[str]:
+    """Return QIDs of questions graded on their own (without subquestions)."""
+    rows = conn.execute('SELECT qid FROM gradable_question WHERE exam_id = %s', (exam_id,)).fetchall()
+    return {row['qid'] for row in rows}
 
 
-def _lock_rubric(conn, QID: str, exam_ID: int) -> None:
-    """The parent row is a stable lock even when its current label set is empty."""
-    with conn.cursor() as cursor:
-      cursor.execute(
-        """
-        SELECT QID FROM Rubric WHERE exam_ID = %s AND QID = %s
-        FOR NO KEY UPDATE
-        """,
-        (exam_ID, QID)
-      )
-      if cursor.fetchone() is None:
-        raise ValueError(f"Rubric {QID} does not exist")
+def exam_has_decisions(conn, exam_id: int) -> bool:
+    """Return whether the exam already holds any grading decisions."""
+    row = conn.execute('SELECT EXISTS (SELECT 1 FROM decision WHERE exam_id = %s) AS found', (exam_id,)).fetchone()
+    return bool(row and row['found'])
 
 
-def add_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID):
-    """Create a question independently of its reusable label relationships."""
-    from psycopg.types.json import Jsonb
-    with conn.cursor() as cursor:
-      cursor.execute('INSERT INTO rubric(exam_id,qid,title,grading_method,total_scores,region,scoring) VALUES(%s,%s,%s,%s,%s,%s,%s)',
-                     (exam_ID, QID, title, grading_method, total_scores, Jsonb(region), scoring))
+def question_has_used_labels(conn, exam_id: int, qid: str) -> bool:
+    """Return whether any criterion linked to `qid` is referenced by decisions or regrade queues."""
+    row = conn.execute(
+        """SELECT EXISTS (
+             SELECT 1 FROM rubric_label rl
+             WHERE rl.exam_id = %s AND rl.qid = %s
+               AND (
+                 EXISTS (SELECT 1 FROM decision_label dl WHERE dl.exam_id = rl.exam_id AND dl.label_id = rl.label_id)
+                 OR EXISTS (SELECT 1 FROM regrade_queue rq WHERE rq.exam_id = rl.exam_id AND rq.label_id = rl.label_id)
+               )
+           ) AS used""",
+        (exam_id, qid),
+    ).fetchone()
+    return bool(row and row['used'])
 
 
-def edit_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID):
-    """Points and scoring decide every score, so saved scores for this question are recalculated."""
-    from psycopg.types.json import Jsonb
-    with conn.cursor() as cursor:
-      cursor.execute('SELECT exam_id FROM assignment WHERE exam_id=%s FOR UPDATE', (exam_ID,))
-      cursor.execute('UPDATE rubric SET title=%s,grading_method=%s,total_scores=%s,region=%s,scoring=%s WHERE exam_id=%s AND qid=%s',
-                     (title, grading_method, total_scores, Jsonb(region), scoring, exam_ID, QID))
-      changed = cursor.rowcount > 0
-      cursor.execute('SELECT record_id FROM decision WHERE exam_id=%s AND qid=%s ORDER BY record_id', (exam_ID, QID))
-      for record in [row['record_id'] for row in cursor.fetchall()]:
-        decision_queries._lock_decision(conn, record, exam_ID)
-        decision_queries._recalculate_score(conn, record, exam_ID)
-      return changed
+def clear_exam_rubric(conn, exam_id: int) -> None:
+    """Delete all rubric questions and labels for an exam (rubric first so regrade_queue cascades cleanly)."""
+    conn.execute('DELETE FROM rubric WHERE exam_id = %s', (exam_id,))
+    conn.execute('DELETE FROM label WHERE exam_id = %s', (exam_id,))
 
 
-def remove_question(conn, QID, *, exam_ID):
-    """Delete the current question; FK cascades are captured by audit triggers."""
-    with conn.cursor() as cursor:
-      cursor.execute('DELETE FROM rubric WHERE exam_id=%s AND qid=%s', (exam_ID,QID))
-      return cursor.rowcount > 0
+def clear_question_labels(conn, exam_id: int, qid: str) -> None:
+    """Unlink criteria from `qid` and delete any resulting orphaned unused labels."""
+    conn.execute(
+        """WITH removed AS (
+             DELETE FROM rubric_label WHERE exam_id = %s AND qid = %s RETURNING label_id
+           )
+           DELETE FROM label l
+           USING removed r
+           WHERE l.exam_id = %s AND l.label_id = r.label_id
+             AND NOT EXISTS (SELECT 1 FROM rubric_label other WHERE other.exam_id = l.exam_id AND other.label_id = l.label_id)
+             AND NOT EXISTS (SELECT 1 FROM decision_label dl WHERE dl.exam_id = l.exam_id AND dl.label_id = l.label_id)
+             AND NOT EXISTS (SELECT 1 FROM regrade_queue rq WHERE rq.exam_id = l.exam_id AND rq.label_id = l.label_id)""",
+        (exam_id, qid, exam_id),
+    )

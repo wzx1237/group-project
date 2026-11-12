@@ -22,11 +22,13 @@ function grading(student) {
   return ['neutral', 'Not started']
 }
 
-// Each student's report and the class's grades, ready to download.
+// each student's report and the class's grades, ready to download.
 export default function ExamReportsPage() {
   const { examId } = useParams()
   const [students, setStudents] = useState(null)
   const [error, setError] = useState('')
+  // track active section filter
+  const [selectedSection, setSelectedSection] = useState('all')
 
   useEffect(() => {
     fetchStudentScores(examId)
@@ -36,6 +38,19 @@ export default function ExamReportsPage() {
 
   const counted = students?.filter((s) => s.hasExam || s.noShow) ?? []
   const graded = counted.filter((s) => s.graded).length
+
+  // unique sections found across students
+  const sections = Array.from(
+    new Set((students ?? []).map((s) => s.section).filter(Boolean))
+  ).sort()
+  const hasUnassigned = (students ?? []).some((s) => !s.section)
+
+  // filter students according to the selected section
+  const displayedStudents = (students ?? []).filter((s) => {
+    if (selectedSection === 'all') return true
+    if (selectedSection === 'unassigned') return !s.section
+    return s.section === selectedSection
+  })
 
   return (
     <main className={styles.page}>
@@ -65,8 +80,46 @@ export default function ExamReportsPage() {
             <Button href={reportsZipUrl(examId)}>
               <FileArchive {...icon} /> Download all reports
             </Button>
+            <Button href={reportsZipUrl(examId, { grouped: true })}>
+              <FileArchive {...icon} /> Download grouped by section
+            </Button>
+            {selectedSection !== 'all' && (
+              <Button href={reportsZipUrl(examId, { section: selectedSection })} variant="primary">
+                <Download {...icon} /> Download {selectedSection === 'unassigned' ? 'unassigned' : `Section ${selectedSection}`} reports
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* section filter dropdown */}
+        {students && sections.length > 0 && (
+          <div className={styles.filterBar}>
+            <label htmlFor="section-select" className={styles.filterLabel}>
+              Filter by section:
+            </label>
+            <select
+              id="section-select"
+              className={styles.select}
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+            >
+              <option value="all">All sections ({students.length})</option>
+              {sections.map((sec) => {
+                const count = students.filter((s) => s.section === sec).length
+                return (
+                  <option key={sec} value={sec}>
+                    Section {sec} ({count})
+                  </option>
+                )
+              })}
+              {hasUnassigned && (
+                <option value="unassigned">
+                  Unassigned ({students.filter((s) => !s.section).length})
+                </option>
+              )}
+            </select>
+          </div>
+        )}
 
         {!students && !error && <p className={styles.muted}>Loading students…</p>}
         {students && (
@@ -76,6 +129,7 @@ export default function ExamReportsPage() {
                 <tr>
                   <th>Student</th>
                   <th>UID</th>
+                  <th>Section</th>
                   <th>Score</th>
                   <th>Grading</th>
                   <th>
@@ -84,12 +138,13 @@ export default function ExamReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => {
+                {displayedStudents.map((s) => {
                   const [tone, label] = grading(s)
                   return (
                     <tr key={s.uid}>
                       <td className={styles.name}>{s.name}</td>
                       <td>{s.uid}</td>
+                      <td>{s.section || '—'}</td>
                       <td>{s.graded ? `${formatNumber(s.earned)} / ${s.possible}` : '—'}</td>
                       <td>
                         <Badge tone={tone}>{label}</Badge>

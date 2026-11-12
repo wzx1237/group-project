@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { Eye, Lock, Plus, User } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, Lock, Plus, User } from 'lucide-react'
 import { icon } from './icon'
 import styles from './rubricPanel.module.css'
 
@@ -119,5 +119,67 @@ export function CommentAndNotesBox({ decision, onSave }) {
         />
       )}
     </div>
+  )
+}
+
+
+export const EXAM_COMMENT = 'exam-comment'
+
+// A comment to this student about their whole exam, in a card of its own after the questions. Saves when you leave it.
+// `lock` is set when someone is writing it; another grader's lock makes it read-only here until they let go.
+export function ExamCommentCard({ comment: savedComment, onSave, collapsed, onToggle, lock, onTakeOver }) {
+  const id = useId()
+  const [comment, setComment] = useState(savedComment ?? '')
+  const lockedOut = Boolean(lock && !lock.mine)
+
+  function handleTakeOver() {
+    if (window.confirm(`Take over the overall comment from ${lock.holder_name}? They won't be able to save it until they take it back.`)) {
+      onTakeOver()
+    }
+  }
+
+  function handleBlur() {
+    const next = comment.trim() || null
+    setComment(next ?? '')
+    if (next !== (savedComment ?? null)) onSave(next)
+  }
+
+  return (
+    <section className={styles.card} aria-labelledby={`${id}-name`}>
+      <div className={styles.summary}>
+        <button
+          type="button"
+          className={styles.chevron}
+          onClick={() => onToggle(EXAM_COMMENT)}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? 'Show' : 'Hide'} overall comment`}
+        >
+          {collapsed ? <ChevronRight {...icon} /> : <ChevronDown {...icon} />}
+        </button>
+        <h3 id={`${id}-name`} className={styles.name}>
+          Overall comment
+        </h3>
+      </div>
+      {!collapsed && lockedOut && (
+        <p className={styles.lockedBy} role="status">
+          <Lock {...icon} />
+          <span className={styles.waitingText}>{lock.holder_name} is writing this comment</span>
+          <button type="button" className={styles.takeOver} onClick={handleTakeOver}>
+            Take over
+          </button>
+        </p>
+      )}
+      {!collapsed && (
+        <textarea
+          className={styles.noteInput}
+          aria-labelledby={`${id}-name`}
+          disabled={lockedOut}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => e.key === 'Escape' && e.currentTarget.blur()}
+        />
+      )}
+    </section>
   )
 }

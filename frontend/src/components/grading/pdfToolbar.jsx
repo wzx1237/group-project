@@ -1,8 +1,19 @@
-import { FileText, Maximize, Minus, Plus } from 'lucide-react'
+import { Eye, EyeOff, FileText, Maximize, Minus, Plus } from 'lucide-react'
 import { icon } from './icon'
 import styles from './pdfCanvasViewer.module.css'
 
-export function PdfToolbar({ filename, url, pageCount, zoom, onZoomOut, onZoomIn, onFullScreen }) {
+export function PdfToolbar({
+  filename,
+  url,
+  pageCount,
+  zoom,
+  onZoomOut,
+  onZoomIn,
+  onFullScreen,
+  hasRegions = false,
+  showRegions = true,
+  onToggleRegions,
+}) {
   return (
     <div className={styles.toolbar}>
       <div className={styles.file}>
@@ -13,6 +24,21 @@ export function PdfToolbar({ filename, url, pageCount, zoom, onZoomOut, onZoomIn
         {pageCount > 0 && <span className={styles.pageCount}>{pageCount === 1 ? '1 page' : `${pageCount} pages`}</span>}
       </div>
       <div className={styles.controls}>
+        {hasRegions && onToggleRegions && (
+          <>
+            <button
+              type="button"
+              className={[styles.regionToggle, showRegions && styles.regionToggleActive].filter(Boolean).join(' ')}
+              aria-pressed={showRegions}
+              onClick={onToggleRegions}
+              title={showRegions ? 'Hide question regions' : 'Show question regions'}
+            >
+              {showRegions ? <Eye {...icon} /> : <EyeOff {...icon} />}
+              Regions
+            </button>
+            <span className={styles.divider} aria-hidden="true" />
+          </>
+        )}
         <button type="button" className={styles.control} onClick={onZoomOut} disabled={!onZoomOut} aria-label="Zoom out">
           <Minus {...icon} size={16} />
         </button>

@@ -16,6 +16,8 @@ from app import config, workflow
 from app.database import exam as exam_db
 from app.database import grading as grading_db
 from app.database import label as label_db
+from app.database import locks as locks_db
+from app.database import regrade as regrade_db
 from app.database import rubric as rubric_db
 from app.database import staff as staff_db
 from app.database import student as student_db
@@ -36,6 +38,12 @@ def match(expected, actual):
         raise HTTPException(428, 'If-Match is required; refresh the workspace first')
     if expected != actual:
         raise HTTPException(412, 'Workspace changed; refresh and review before saving')
+
+
+def locked_by(lock, doing='grading this answer'):
+    """409 for an answer (or overall comment) another grader is working on; the page shows who holds it."""
+    name = (lock or {}).get('holder_name') or 'Another grader'
+    return HTTPException(409, {'message': f'{name} is {doing} right now', 'locked_by': (lock or {}).get('holder')})
 
 
 def amount(value):
@@ -113,13 +121,23 @@ class GradingService:
             definitions = {row['label_id']: row for row in state['labels']}
             if any(label not in definitions for label in labels):
                 raise HTTPException(422, 'Selected labels must belong to this question rubric')
+            # A split criterion stays on answers that had it until they are regraded, but is never applied again.
+            kept = {row['label_id'] for row in state['selected_labels']}
+            if any(definitions[label].get('retired_at') and label not in kept for label in labels):
+                raise HTTPException(422, 'That criterion was split; apply one of its replacements instead')
+            # Saving takes (or renews) the answer's lock, so nobody else edits it while this grader works on it.
+            if locks_db.take(conn, self.actor, exam, uid, qid) is None:
+                raise locked_by(locks_db.holder(conn, exam, uid, qid))
             if state['assignment']['directory_id'] is None:
                 grading_db.assign_grader(conn, self.actor, exam, uid, qid)
-            record = state['decision']['record_id'] if regrade else decision_db.save_decision(conn, uid, qid, exam_ID=exam)
-            decision_db.add_decision_labels(conn, record, labels, [self.actor] * len(labels), exam_ID=exam)
-            decision_db.update_decision(conn, record, comments, exam_ID=exam)
-            # An answer is graded once a label is applied; with none it stays in progress.
+            record = state['decision']['record_id'] if regrade else self.db.save_decision(uid, qid, exam_ID=exam)
+            self.db.add_decision_labels(record, labels, [self.actor] * len(labels), exam_ID=exam)
+            self.db.update_decision(record, comments, exam_ID=exam)
+            # An answer is graded once a label is applied; with none it stays in progress. One still waiting in a
+            # regrade queue stays 'Regrade' until it is reviewed there.
             status = 'Finished' if labels else 'InProgress'
+            if regrade_db.waiting(conn, exam, uid, qid):
+                status = 'Regrade'
             self.db.update_assignment_status(uid, qid, status, exam_ID=exam)
             # The database applies the question's scoring and limits, so report what it saved.
             score = decision_db.get_decision(conn, record, exam_ID=exam)['scores']

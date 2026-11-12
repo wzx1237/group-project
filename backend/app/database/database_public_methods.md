@@ -13,8 +13,8 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `create_course(conn, code, term, title) -> dict \| None` | Create course; return None when missing. |
 | `course_row(conn, course_id) -> dict \| None` | Course row; return None when missing. |
 | `update_course_columns(conn, course_id: int, changes: dict) -> int` | Update course metadata using an explicit column whitelist. |
-| `course_id_row(conn, course_id) -> dict \| None` | Course id row; return None when missing. |
 | `course_by_code(conn, code) -> dict \| None` | Course by code; return None when missing. |
+| `course_exists(conn, course_id) -> bool` | check whether this course exists |
 | `ensure_course(conn, code, term) -> int` | Ensure course; return the affected row count. |
 | `course_id_by_term(conn, code, term) -> dict \| None` | Course id by term; return None when missing. |
 
@@ -24,7 +24,7 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | --- | --- |
 | `enrolled_decisions(conn, exam_id, uid) -> list[dict]` | Enrolled decisions; return rows in query order. |
 | `set_internal_note(conn, internal_note, exam_id, uid, qid) -> int` | Set internal note; return the affected row count. |
-| `has_saved_decisions(conn, exam_id, uids) -> dict \| None` | Has saved decisions; return None when missing. |
+| `has_saved_decisions(conn, exam_id, uids) -> bool` | Has saved decisions; return None when missing. |
 
 ### `exam`
 
@@ -61,6 +61,8 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `release_answer(conn, exam_id, uid, qid) -> int` | Release answer; return the affected row count. |
 | `seed_exam_mappings(conn, exam_id) -> int` | Seed enrolled papers across all questions without replacing existing mappings. |
 | `course_question_progress(conn, actor, course_id) -> list[dict]` | Course question progress; return rows in query order. |
+| `exam_question_progress(conn, exam_id) -> list[dict]` | Per-question progress for one exam over enrolled students with a paper: qid, total, finished, regrade. Questions graded through their parts are left out. |
+| `exam_student_answers(conn, exam_id) -> list[dict]` | Every enrolled student with a paper paired with every gradable question: uid, name, qid, status. |
 | `exam_mappings(conn, exam_id) -> list[dict]` | Exam mappings; return rows in query order. |
 | `claim_available_answer(conn, actor, exam_id, uid, qid) -> dict \| None` | Claim an unfinished answer only when unowned or already owned by this actor. |
 | `mapping_row(conn, exam_id, uid, qid) -> dict \| None` | Mapping row; return None when missing. |
@@ -106,6 +108,15 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `question_row(conn, exam_id, qid) -> dict \| None` | Question row; return None when missing. |
 | `question_ids(conn, exam_id) -> list[dict]` | Question ids; return rows in query order. |
 | `insert_question(conn, exam_id, qid, grading_method, total_scores) -> int` | Insert question; return the affected row count. |
+| `resolve_assignment_exam_id(conn, assignment_id: str \| None) -> int \| None` | Resolve an assignment slug or numeric ID without mutating data. |
+| `import_sources(conn, actor: str, exclude_exam_id: int \| None = None) -> list[dict]` | List assignments with a rubric in courses the actor staffs. |
+| `exam_rubric_rows(conn, exam_id: int) -> list[dict]` | Return all rubric question rows for an exam. |
+| `exam_active_labels(conn, exam_id: int) -> list[dict]` | Return active (non-retired) criteria linked to each question of an exam. |
+| `gradable_qids(conn, exam_id: int) -> set[str]` | Return QIDs of questions graded on their own (without subquestions). |
+| `exam_has_decisions(conn, exam_id: int) -> bool` | Return whether the exam already holds any grading decisions. |
+| `question_has_used_labels(conn, exam_id: int, qid: str) -> bool` | Return whether any criterion linked to `qid` is referenced by decisions or regrade queues. |
+| `clear_exam_rubric(conn, exam_id: int) -> None` | Delete all rubric questions and labels for an exam. |
+| `clear_question_labels(conn, exam_id: int, qid: str) -> None` | Unlink criteria from `qid` and delete any resulting orphaned unused labels. |
 
 ### `staff`
 
@@ -114,7 +125,7 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `course_membership(conn, course_id, directory_id) -> dict \| None` | Course membership; return None when missing. |
 | `staff_role(conn, directory_id) -> dict \| None` | Staff role; return None when missing. |
 | `lock_exam_membership(conn, exam_id, actor) -> dict \| None` | Read the actor role while holding membership and assignment share locks. |
-| `staff_exists(conn, directory_id) -> dict \| None` | Staff exists; return None when missing. |
+| `staff_exists(conn, directory_id) -> bool` | Staff exists; return False when missing. |
 | `add_course_member(conn, course_id, directory_id) -> int` | Add course member; return the affected row count. |
 | `lock_course_membership(conn, course_id, actor) -> dict \| None` | Lock course membership; return None when missing. |
 | `course_role(conn, course_id, actor) -> dict \| None` | Course role; return None when missing. |
@@ -170,7 +181,7 @@ Methods below use the shared audited connection; an outer `Database.transaction(
 
 | Signature | Purpose |
 | --- | --- |
-| `add_course(self, code: str, term: str, title: str \| None=None) -> int` | Create a course offering and return its generated course ID. |
+| `create_course(self, code: str, term: str, title: str \| None=None) -> int` | Create a course offering and return its generated course ID. |
 | `get_course_enrollment(self, course_id: int) -> List[Dict[str, Any]]` | Return enrolled student IDs and names for one course. |
 
 ### `database.Database`
@@ -259,7 +270,6 @@ The class methods above now delegate to connection functions. Each function belo
 
 ### `course`
 
-- `add_course(conn, code: str, term: str, title: str | None=None)`
 - `get_course_enrollment(conn, course_id: int)`
 
 ### `exam`

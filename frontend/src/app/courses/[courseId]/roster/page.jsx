@@ -422,6 +422,8 @@ export default function CourseRosterPage() {
                       border: '1px solid #dfe5e5',
                       fontFamily: 'monospace',
                       fontSize: '12px',
+                      resize: 'none',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
