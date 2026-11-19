@@ -42,12 +42,12 @@ def exam_students(conn, exam_id, student) -> list[dict]:
     """Exam students; return rows in query order."""
     # query enrolled students with their section and exam status
     return conn.execute(
-        """SELECT p.uid, s.name, en.section, p.scanned_pdf, p.comments AS comment, false AS no_show FROM studentpaper p
+        """SELECT p.uid, COALESCE(en.name, s.name) AS name, en.section, p.scanned_pdf, p.comments AS comment, false AS no_show FROM studentpaper p
         JOIN student s USING(uid) JOIN assignment e USING(exam_id)
         JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id
         WHERE p.exam_id=%s AND (%s::text IS NULL OR p.uid=%s)
         UNION ALL
-        SELECT a.uid, s.name, en.section, NULL, NULL, true FROM assignment_student a JOIN student s USING(uid)
+        SELECT a.uid, COALESCE(en.name, s.name) AS name, en.section, NULL, NULL, true FROM assignment_student a JOIN student s USING(uid)
         JOIN assignment e USING(exam_id) JOIN enrollment en ON en.uid=a.uid AND en.course_id=e.course_id
         WHERE a.exam_id=%s AND a.status='no_show' AND (%s::text IS NULL OR a.uid=%s)
         AND NOT EXISTS (SELECT 1 FROM studentpaper p WHERE p.exam_id=a.exam_id AND p.uid=a.uid)
@@ -59,7 +59,9 @@ def exam_students(conn, exam_id, student) -> list[dict]:
 def enrolled_contacts(conn, exam_id) -> list[dict]:
     """Enrolled contacts; return rows in query order."""
     return conn.execute(
-        """SELECT s.uid, s.name, s.email FROM student s JOIN enrollment en USING(uid)
-        JOIN assignment e ON e.course_id=en.course_id WHERE e.exam_id=%s ORDER BY s.name, s.uid""",
+        """SELECT s.uid, COALESCE(en.name, s.name) AS name,
+                  CASE WHEN en.name IS NOT NULL THEN en.email ELSE s.email END AS email, en.section
+        FROM student s JOIN enrollment en USING(uid)
+        JOIN assignment e ON e.course_id=en.course_id WHERE e.exam_id=%s ORDER BY COALESCE(en.name, s.name), s.uid""",
         (exam_id,),
     ).fetchall()

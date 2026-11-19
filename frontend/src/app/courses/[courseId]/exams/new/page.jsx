@@ -27,6 +27,7 @@ export default function ExamSetupWizardPage() {
     totalPoints: '',
     dueDate: '',
     blankPdf: null,
+    coverLayout: null,
     questions: [],
   })
 
@@ -48,17 +49,23 @@ export default function ExamSetupWizardPage() {
     setCurrentStep(3)
   }
 
-  // creates the assignment with no blank exam, questions or rubric; those can be added later
+  // creates the assignment with no questions or rubric (those can be added later), saving the blank exam if one was chosen
   async function handleSkipSetup(data) {
     setPublishError('')
+    let exam = created
     try {
-      const exam = created || (await examsSetupService.createExamDraft(courseId, { title: data.title, kind: data.kind, due: data.dueDate }))
+      exam = exam || (await examsSetupService.createExamDraft(courseId, { title: data.title, kind: data.kind, due: data.dueDate }))
       setCreated(exam)
       await refresh?.()
-      router.push(`/courses/${courseId}/exams/${exam.id}/upload`)
     } catch (err) {
-      setPublishError(`Could not create the assignment: ${err.message}`)
+      return setPublishError(`Could not create the assignment: ${err.message}`)
     }
+    try {
+      if (data.blankPdf) await examsSetupService.uploadExamTemplatePdf(exam.id, data.blankPdf, 'blank_exam', data.coverLayout)
+    } catch (err) {
+      return setPublishError(`“${exam.title}” was created, but its blank exam wasn't saved: ${err.message.replace(/\.$/, '')}. You can try again.`)
+    }
+    router.push(`/courses/${courseId}/exams/${exam.id}/upload`)
   }
 
   // Creates the exam, saves its blank PDF (which sets up splitting scans), questions, regions and rubric, then opens
@@ -79,7 +86,7 @@ export default function ExamSetupWizardPage() {
     }
 
     try {
-      await examsSetupService.uploadExamTemplatePdf(exam.id, examData.blankPdf, 'blank_exam')
+      await examsSetupService.uploadExamTemplatePdf(exam.id, examData.blankPdf, 'blank_exam', examData.coverLayout)
       await examsSetupService.saveQuestionsAndRubric(exam.id, rubric)
       router.push(`/courses/${courseId}/exams/${exam.id}/upload`)
     } catch (err) {
@@ -128,7 +135,13 @@ export default function ExamSetupWizardPage() {
 
       <section className={styles.stepBody}>
         {currentStep === 1 && (
-          <BlankExamUploadStep initialData={examData} onNext={handleStep1Next} onSkip={handleSkipSetup} />
+          <BlankExamUploadStep
+            initialData={examData}
+            onNext={handleStep1Next}
+            onSkip={handleSkipSetup}
+            skipSavesPdf
+            skipWithPdfLabel="Save blank exam & skip the rest"
+          />
         )}
 
         {currentStep === 2 && (

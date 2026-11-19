@@ -145,7 +145,7 @@ export function parseRubricMarkdown(markdownText) {
       const title = (splitIdx >= 0 ? rest.slice(0, splitIdx) : rest).trim()
       const description = (splitIdx >= 0 ? rest.slice(splitIdx + 3) : '').trim()
       if (!title) throw new Error(`Line ${lineNo}: Criterion title cannot be empty`)
-      if (title.length > 50) throw new Error(`Line ${lineNo}: Criterion title exceeds 50 characters`)
+      if (title.length > 500) throw new Error(`Line ${lineNo}: Criterion title exceeds 500 characters`)
       currentQuestion.criteria.push({ title, description, deduction })
       continue
     }

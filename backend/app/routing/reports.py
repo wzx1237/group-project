@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 import tempfile
 import zipfile
 
@@ -14,6 +15,11 @@ from app.database import exam as exam_db
 from app.database import reports as reports_db
 
 router = APIRouter(prefix='/api/assignments/{assignment_id}', dependencies=[Depends(current_user)])
+
+
+def _part(text: str) -> str:
+    """Free text (a section) as part of a download name: no spaces, quotes or slashes."""
+    return '_'.join(re.sub(r'[^A-Za-z0-9 .-]', '', text).split())
 
 
 @router.get('/release')
@@ -57,8 +63,8 @@ def all_reports(assignment_id: str, svc: Service, section: str | None = None, gr
         for report in reports:
             # group reports into section folders when requested
             if grouped and not section:
-                sec = (report.get('section') or '').strip()
-                folder = f'Section {sec}' if sec else 'Unassigned'
+                sec = _part(report.get('section') or '')
+                folder = f'Section_{sec}' if sec else 'Unassigned'
                 arcname = f'{folder}/{filename(report)}'
             else:
                 arcname = filename(report)
@@ -67,11 +73,11 @@ def all_reports(assignment_id: str, svc: Service, section: str | None = None, gr
 
     # determine zip download filename
     if section:
-        disp_name = f'{assignment_id} section {section} reports.zip'
+        disp_name = f'{assignment_id}_section_{_part(section)}_reports.zip'
     elif grouped:
-        disp_name = f'{assignment_id} reports (grouped by section).zip'
+        disp_name = f'{assignment_id}_reports_by_section.zip'
     else:
-        disp_name = f'{assignment_id} reports.zip'
+        disp_name = f'{assignment_id}_reports.zip'
 
     return StreamingResponse(_chunks(file), media_type='application/zip',
                              headers={'Content-Disposition': f'attachment; filename="{disp_name}"'})
@@ -93,11 +99,11 @@ def grades_csv(assignment_id: str, svc: Service):
     graded = {r['uid']: r['total'] for r in reports if info['questions'] and r['graded'] == info['questions']}
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(['Name', 'Email', 'UID', 'Percentage', 'Out of', 'Points'])
+    writer.writerow(['Name', 'Email', 'UID', 'Section', 'Percentage', 'Out of', 'Points'])
     for s in students:
         total = graded.get(s['uid'])
         percent = points(round(100 * total / info['possible'], 2)) if total is not None and info['possible'] else ''
-        writer.writerow([s['name'], s['email'] or '', s['uid'], percent, points(info['possible']),
-                         '' if total is None else points(total)])
+        writer.writerow([s['name'], s['email'] or '', s['uid'], (s['section'] or '').strip(), percent,
+                         points(info['possible']), '' if total is None else points(total)])
     return Response(out.getvalue().encode('utf-8-sig'), media_type='text/csv',
-                    headers={'Content-Disposition': f'attachment; filename="{assignment_id} grades.csv"'})
+                    headers={'Content-Disposition': f'attachment; filename="{assignment_id}_grades.csv"'})

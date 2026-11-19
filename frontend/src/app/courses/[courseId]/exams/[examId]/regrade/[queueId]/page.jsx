@@ -29,11 +29,11 @@ function nextPending(items, from) {
   return -1
 }
 
-function Option({ adjustment, title, note, shortcut, checked, onChange }) {
+function Option({ adjustment, title, note, shortcut, checked, disabled, onChange }) {
   return (
     <li>
       <label className={checked ? `${styles.option} ${styles.picked}` : styles.option}>
-        <input type="checkbox" checked={checked} onChange={onChange} />
+        <input type="checkbox" checked={checked} disabled={disabled} onChange={onChange} />
         <span className={styles.optionText}>
           <span>
             {adjustment && <strong>{adjustment}</strong>}
@@ -51,13 +51,21 @@ function Option({ adjustment, title, note, shortcut, checked, onChange }) {
 function Decision({ queue, question, label, item, name, decision, replacements, onResolve, onSkip, canSkip }) {
   const split = queue.kind === 'split'
   const options = split ? replacements : question.criteria
-  const others = split ? question.criteria.filter((c) => !queue.replacement_ids.includes(c.label_id)) : []
+  const isReplacement = (id) => split && queue.replacement_ids.includes(id)
+  const others = split ? question.criteria.filter((c) => !isReplacement(c.label_id)) : []
+  const zeros = others.filter((c) => c.deduction === 0)
   const [picked, setPicked] = useState(() => new Set((decision?.criteria ?? []).filter((id) => id !== queue.criterion?.label_id)))
+  const [none, setNone] = useState(false)
   const [problem, setProblem] = useState('')
   const [saving, setSaving] = useState(false)
   const open = !item.resolved_at && !queue.closed_at
+  // An answer with no criteria is ungraded, so "neither" on an answer with nothing else applies the question's
+  // 0-point criterion (Correct when deducting, no credit when adding), which gives the same score.
+  const filler = split && none && !picked.size && zeros.length === 1 ? zeros[0] : null
+  const applied = filler ? [filler.label_id] : [...picked]
 
   function toggle(id) {
+    if (isReplacement(id)) setNone(false)
     setPicked((current) => {
       const next = new Set(current)
       if (!next.delete(id)) next.add(id)
@@ -66,7 +74,8 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
   }
 
   function neither() {
-    setPicked((current) => new Set([...current].filter((id) => !queue.replacement_ids.includes(id))))
+    setNone(true)
+    setPicked((current) => new Set([...current].filter((id) => !isReplacement(id))))
   }
 
   // 1, 2, ... toggle the options in order and 0 picks "neither", unless someone is typing.
@@ -83,28 +92,41 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
     return () => window.removeEventListener('keydown', handleKey)
   })
 
-  const before = decision?.score ?? null
-  const after = scoreWith(question, allCriteria(question).filter((c) => picked.has(c.label_id)).reduce((sum, c) => sum + c.deduction, 0))
-  const delta = before === null ? 0 : Math.round((after - before) * 100) / 100
-  const change = delta > 0 ? `gains ${plural(delta, 'point')}` : delta < 0 ? `loses ${plural(-delta, 'point')}` : 'keeps its score'
   const chosen = replacements.filter((c) => picked.has(c.label_id))
+  const decided = !split || none || chosen.length > 0
+  const before = decision?.score ?? null
+  const after =
+    decided && applied.length
+      ? scoreWith(question, allCriteria(question).filter((c) => applied.includes(c.label_id)).reduce((sum, c) => sum + c.deduction, 0))
+      : null
+  const delta = before === null || after === null ? 0 : Math.round((after - before) * 100) / 100
+  const change = delta > 0 ? `gains ${plural(delta, 'point')}` : delta < 0 ? `loses ${plural(-delta, 'point')}` : 'keeps its score'
   const which = !split
     ? null
-    : !chosen.length
+    : none
       ? 'Neither criterion applies'
       : chosen.length === replacements.length
         ? `${replacements.length === 2 ? 'Both' : 'All'} criteria apply`
         : chosen.length === 1
           ? `Only “${chosen[0].title}” applies`
           : `${chosen.length} criteria apply`
-  const sentence = which ? `${which}, so this submission ${change}.` : `This submission ${change}.`
+
+  function summary() {
+    if (!decided) return 'Pick which new criteria apply, or Neither.'
+    if (after === null) {
+      if (!split) return 'Pick at least one criterion so the answer stays graded.'
+      return zeros.length
+        ? 'Neither leaves no criterion on this answer. Pick which 0-point criterion it gets so it stays graded.'
+        : 'Neither leaves no criterion on this answer, so it would be ungraded. Add a 0-point criterion to this question on the Rubric page, or pick another one.'
+    }
+    return which ? `${which}, so this submission ${change}.` : `This submission ${change}.`
+  }
 
   async function save() {
-    if (!picked.size) return setProblem('Pick at least one criterion so the answer stays graded.')
     setProblem('')
     setSaving(true)
     try {
-      await onResolve([...picked])
+      await onResolve(applied)
     } catch (err) {
       setProblem(err.message)
     }
@@ -152,7 +174,7 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
                   title="Neither"
                   note={`Remove the ${queue.criterion.deduction < 0 ? 'deduction' : 'credit'} from this submission`}
                   shortcut={0}
-                  checked={!chosen.length}
+                  checked={none}
                   onChange={neither}
                 />
               )}
@@ -166,8 +188,9 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
                       key={c.label_id}
                       adjustment={formatAdjustment(c.deduction)}
                       title={c.title}
-                      note={c.description}
-                      checked={picked.has(c.label_id)}
+                      note={c === filler ? 'Applied so the answer stays graded' : c.description}
+                      checked={picked.has(c.label_id) || c === filler}
+                      disabled={c === filler}
                       onChange={() => toggle(c.label_id)}
                     />
                   ))}
@@ -181,11 +204,11 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
                   {before ?? '—'} / {question.total_score}
                   <ArrowRight {...icon} />
                   <strong>
-                    {after} / {question.total_score}
+                    {after ?? '—'} / {question.total_score}
                   </strong>
                 </span>
               </p>
-              <p className={styles.scoreNote}>{sentence}</p>
+              <p className={styles.scoreNote}>{summary()}</p>
             </div>
             {problem && (
               <p className={styles.problemText} role="alert">
@@ -207,7 +230,7 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
               <Button onClick={onSkip} disabled={!canSkip}>
                 Skip
               </Button>
-              <Button variant="primary" onClick={save} disabled={saving}>
+              <Button variant="primary" onClick={save} disabled={saving || after === null}>
                 Save and next
                 <ArrowRight {...icon} size={16} />
               </Button>

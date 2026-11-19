@@ -278,6 +278,49 @@
   color: var(--danger, #b3261e);
 }
 
+.editButton {
+  padding: 5px 10px;
+  margin-left: 6px;
+  background: #ffffff;
+  border: 1px solid var(--border, #dfe5e5);
+  color: var(--fg-secondary, #435257);
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.editButton:hover {
+  border-color: var(--accent, #16756b);
+  color: var(--accent, #16756b);
+}
+
+.tdAction .editButton {
+  margin: 0 6px 0 0;
+}
+
+.renameForm {
+  display: flex;
+  align-items: center;
+}
+
+.renameInput {
+  width: 220px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border, #dfe5e5);
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--fg, #202c30);
+  outline: none;
+}
+
+.renameInput:focus {
+  border-color: var(--accent, #16756b);
+  box-shadow: 0 0 0 3px rgba(22, 117, 107, 0.12);
+}
+
 .tableFooter {
   display: flex;
   align-items: center;
@@ -384,6 +427,24 @@
 
 .addButton:hover {
   background: var(--accent-hover, #12655c);
+}
+
+.addButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.formError {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger, #b3261e);
+}
+
+.staffCard > .formError {
+  margin: 0;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border, #dfe5e5);
 }
 
 .helperText {

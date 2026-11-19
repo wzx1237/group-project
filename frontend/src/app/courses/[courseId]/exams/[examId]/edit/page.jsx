@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { PageNotice } from '@/components/layout/PageNotice'
@@ -25,7 +25,7 @@ export default function EditAssignmentPage() {
   const [examData, setExamData] = useState(null) // null until the saved setup has loaded
   const [loadError, setLoadError] = useState('')
   const [saveError, setSaveError] = useState('')
-  const savedPdf = useRef(null) // the blank exam as loaded, to tell whether a new one was chosen
+  const [savedPdf, setSavedPdf] = useState(null) // the blank exam on the server; choosing another needs its UID box location confirmed
 
   useEffect(() => {
     if (!assignment || examData) return
@@ -33,7 +33,7 @@ export default function EditAssignmentPage() {
     Promise.all([fetchExamRubric(examId), examsSetupService.fetchBlankExam(examId)])
       .then(([rubric, blankPdf]) => {
         if (cancelled) return
-        savedPdf.current = blankPdf
+        setSavedPdf(blankPdf)
         const total = rubricPoints(rubric.questions)
         setExamData({
           kind: assignment.kind || 'exam',
@@ -79,9 +79,11 @@ export default function EditAssignmentPage() {
   // saves the title, type and due date, and the blank exam when a different one was chosen
   async function saveDetails(data) {
     await examsSetupService.updateAssignment(examId, { title: data.title, kind: data.kind, due: data.dueDate })
-    if (data.blankPdf && data.blankPdf !== savedPdf.current) {
-      await examsSetupService.uploadExamTemplatePdf(examId, data.blankPdf, 'blank_exam')
-      savedPdf.current = data.blankPdf
+    // a different PDF, or the saved one with its UID box marked again
+    if (data.blankPdf && (data.blankPdf !== savedPdf || data.coverLayout)) {
+      await examsSetupService.uploadExamTemplatePdf(examId, data.blankPdf, 'blank_exam', data.coverLayout)
+      setSavedPdf(data.blankPdf)
+      setExamData((prev) => ({ ...prev, coverLayout: null })) // saved; a retry after a later failure must not upload again
     }
   }
 
@@ -142,6 +144,8 @@ export default function EditAssignmentPage() {
             initialData={examData}
             requirePdf={false}
             pdfLocked={locked}
+            savedPdf={savedPdf}
+            skipSavesPdf
             nextLabel={locked ? 'Rubric' : 'Questions and Regions'}
             skipLabel="Save details only"
             onSkip={handleSaveDetails}

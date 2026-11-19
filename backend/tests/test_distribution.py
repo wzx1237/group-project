@@ -19,7 +19,7 @@ def no_uploads():
 @pytest.mark.parametrize("route", distribution.router.routes, ids=lambda route: route.name)
 def test_every_route_needs_sign_in(client, route):
     [method] = route.methods
-    path = route.path.format(course_id="1", assignment_id="quiz-1", upload_id="u1", submission_id="s1")
+    path = route.path.format(course_id="1", assignment_id="quiz-1", upload_id="u1", submission_id="s1", directory_id="ta1")
     assert client.request(method, path).status_code == 401
 
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useCourse } from '@/context/CourseContext'
 import { useAuth } from '@/hooks/useAuth'
-import { getCourseStaff } from '@/exam-distribution/lib/api'
+import { addCourseStaff, getCourseStaff, removeCourseStaff, renameCourseStaff } from '@/exam-distribution/lib/api'
 import styles from './StaffRosterPage.module.css'
 
 // derives two-letter initials from full name or directory id
@@ -23,6 +23,7 @@ function toMember(member) {
     id: member.directory_id,
     initials: getInitials(name),
     name,
+    unnamed: name === member.directory_id,
     email: member.email || `${member.directory_id}@umd.edu`,
     role: member.role?.toLowerCase() === 'instructor' ? 'instructor' : 'ta',
   }
@@ -35,6 +36,12 @@ export default function StaffRosterPage() {
   const [staff, setStaff] = useState(null)
   const [error, setError] = useState('')
   const [newTaInput, setNewTaInput] = useState('')
+  const [newTaName, setNewTaName] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addProblem, setAddProblem] = useState('')
+  const [removeProblem, setRemoveProblem] = useState('')
+  const [renaming, setRenaming] = useState(null)
+  const [renameProblem, setRenameProblem] = useState('')
 
   const courseId = course?.id
   useEffect(() => {
@@ -52,35 +59,54 @@ export default function StaffRosterPage() {
   const instructors = members.filter((m) => m.role === 'instructor').map((m) => m.name)
   const courseSubtitle = [course?.code, instructors.join(', '), course?.term].filter(Boolean).join(' · ')
 
-  // appends a new ta member to the local roster list
-  const handleAddTa = (e) => {
+  // saves the ta on the server, then shows the staff as saved there
+  const handleAddTa = async (e) => {
     e.preventDefault()
     const raw = newTaInput.trim()
-    if (!raw) return
-
-    const email = (raw.includes('@') ? raw : `${raw}@umd.edu`).toLowerCase()
-    if (members.some((m) => m.email.toLowerCase() === email)) return
-    const handle = email.split('@')[0]
-    const formattedName = handle
-      .split(/[._-]/)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ')
-
-    const newTa = {
-      id: handle,
-      initials: getInitials(formattedName),
-      name: formattedName,
-      email,
-      role: 'ta',
+    const name = newTaName.trim()
+    if (!raw || !name || adding) return
+    setAdding(true)
+    setAddProblem('')
+    try {
+      const saved = await addCourseStaff(courseId, raw, name)
+      setStaff(saved.map(toMember))
+      setNewTaInput('')
+      setNewTaName('')
+    } catch (err) {
+      setAddProblem(err.message)
+    } finally {
+      setAdding(false)
     }
-
-    setStaff((prev) => [...(prev ?? []), newTa])
-    setNewTaInput('')
   }
 
-  // removes a ta member from the active roster view
-  const handleRemoveTa = (id) => {
-    setStaff((prev) => prev.filter((m) => m.id !== id))
+  const handleRemoveTa = async (member) => {
+    if (!window.confirm(`Remove ${member.name} from this course? Their grades and comments stay.`)) return
+    setRemoveProblem('')
+    try {
+      const saved = await removeCourseStaff(courseId, member.id)
+      setStaff(saved.map(toMember))
+    } catch (err) {
+      setRemoveProblem(err.message)
+    }
+  }
+
+  const startRename = (member) => {
+    setRenameProblem('')
+    setRenaming({ id: member.id, name: member.unnamed ? '' : member.name })
+  }
+
+  const handleRename = async (e) => {
+    e.preventDefault()
+    const name = renaming.name.trim()
+    if (!name) return
+    setRenameProblem('')
+    try {
+      const saved = await renameCourseStaff(courseId, renaming.id, name)
+      setStaff(saved.map(toMember))
+      setRenaming(null)
+    } catch (err) {
+      setRenameProblem(err.message)
+    }
   }
 
   const totalPeopleCount = members.length
@@ -135,13 +161,34 @@ export default function StaffRosterPage() {
                         <td className={styles.td}>
                           <div className={styles.personCell}>
                             <span className={isProfessor ? styles.avatarProfessor : styles.avatarTa}>{m.initials}</span>
-                            <div className={styles.personInfo}>
-                              <span className={styles.personName}>
-                                {m.name}
-                                {isYou && ' (you)'}
-                              </span>
-                              <span className={styles.personEmail}>{m.email}</span>
-                            </div>
+                            {renaming?.id === m.id ? (
+                              <form className={styles.renameForm} onSubmit={handleRename}>
+                                <input
+                                  className={styles.renameInput}
+                                  aria-label={`Name for ${m.id}`}
+                                  placeholder="Full name"
+                                  maxLength={100}
+                                  value={renaming.name}
+                                  onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                                  onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
+                                  autoFocus
+                                />
+                                <button type="submit" className={styles.editButton}>
+                                  Save
+                                </button>
+                                <button type="button" className={styles.editButton} onClick={() => setRenaming(null)}>
+                                  Cancel
+                                </button>
+                              </form>
+                            ) : (
+                              <div className={styles.personInfo}>
+                                <span className={styles.personName}>
+                                  {m.name}
+                                  {isYou && ' (you)'}
+                                </span>
+                                <span className={styles.personEmail}>{m.email}</span>
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className={styles.td}>
@@ -150,8 +197,18 @@ export default function StaffRosterPage() {
                           </span>
                         </td>
                         <td className={styles.tdAction}>
+                          {isInstructor && renaming?.id !== m.id && (
+                            <button type="button" className={styles.editButton} onClick={() => startRename(m)}>
+                              {m.unnamed ? 'Add name' : 'Rename'}
+                            </button>
+                          )}
                           {isInstructor && !isProfessor && (
-                            <button type="button" className={styles.removeButton} onClick={() => handleRemoveTa(m.id)}>
+                            <button
+                              type="button"
+                              className={styles.removeButton}
+                              aria-label={`Remove ${m.name}`}
+                              onClick={() => handleRemoveTa(m)}
+                            >
                               <svg
                                 width="14"
                                 height="14"
@@ -178,6 +235,12 @@ export default function StaffRosterPage() {
                 </tbody>
               </table>
             </div>
+
+            {(removeProblem || renameProblem) && (
+              <p className={styles.formError} role="alert">
+                {removeProblem || renameProblem}
+              </p>
+            )}
 
             <div className={styles.tableFooter}>
               <svg
@@ -207,6 +270,40 @@ export default function StaffRosterPage() {
             <form className={styles.sideCard} onSubmit={handleAddTa}>
               <h2 className={styles.sideCardTitle}>Add a TA</h2>
               <div className={styles.inputGroup}>
+                <label htmlFor="ta-name-input" className={styles.label}>
+                  Name
+                </label>
+                <div className={styles.inputWrapper}>
+                  <svg
+                    className={styles.inputIcon}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="7" r="4" />
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                  </svg>
+                  <input
+                    id="ta-name-input"
+                    type="text"
+                    className={styles.input}
+                    placeholder="e.g. Jane Doe"
+                    maxLength={100}
+                    required
+                    value={newTaName}
+                    onChange={(e) => {
+                      setNewTaName(e.target.value)
+                      setAddProblem('')
+                    }}
+                  />
+                </div>
+              </div>
+              <div className={styles.inputGroup}>
                 <label htmlFor="ta-email-input" className={styles.label}>
                   UMD email or Directory ID
                 </label>
@@ -231,12 +328,23 @@ export default function StaffRosterPage() {
                     className={styles.input}
                     placeholder="e.g. jdoe@umd.edu or jdoe"
                     value={newTaInput}
-                    onChange={(e) => setNewTaInput(e.target.value)}
+                    onChange={(e) => {
+                      setNewTaInput(e.target.value)
+                      setAddProblem('')
+                    }}
+                    aria-invalid={Boolean(addProblem)}
+                    aria-describedby={addProblem ? 'ta-add-problem' : undefined}
                   />
                 </div>
               </div>
 
-              <button type="submit" className={styles.addButton}>
+              {addProblem && (
+                <p id="ta-add-problem" className={styles.formError} role="alert">
+                  {addProblem}
+                </p>
+              )}
+
+              <button type="submit" className={styles.addButton} disabled={adding}>
                 <svg
                   width="16"
                   height="16"
@@ -252,7 +360,7 @@ export default function StaffRosterPage() {
                   <line x1="19" y1="8" x2="19" y2="14" />
                   <line x1="22" y1="11" x2="16" y2="11" />
                 </svg>
-                Add TA
+                {adding ? 'Adding…' : 'Add TA'}
               </button>
 
               <p className={styles.helperText}>

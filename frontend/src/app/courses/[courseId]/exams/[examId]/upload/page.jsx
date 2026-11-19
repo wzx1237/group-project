@@ -18,7 +18,7 @@ import styles from './upload.module.css'
 export default function UploadSubmissionsPage() {
   const { courseId, examId } = useParams()
   const { refresh } = useCourse()
-  const { exam, students, error, uploading, upload, match, reprocess, remove, assign, unassign, mark, reload } =
+  const { exam, students, error, uploading, upload, match, reprocess, remove, assign, unassign, removeExam, mark, reload } =
     useExamUploads(examId, refresh)
 
   if (!exam || !students) {
@@ -76,7 +76,14 @@ export default function UploadSubmissionsPage() {
             <UploadedFiles examId={examId} uploads={exam.uploads} onMatch={match} onReprocess={reprocess} onRemove={remove} />
           </section>
 
-          <OcrStudentMatcherList examId={examId} uploads={exam.uploads} students={students} onAssign={assign} onUnassign={unassign} />
+          <OcrStudentMatcherList
+            examId={examId}
+            uploads={exam.uploads}
+            students={students}
+            onAssign={assign}
+            onUnassign={unassign}
+            onRemove={removeExam}
+          />
         </div>
 
         <aside className={styles.column}>

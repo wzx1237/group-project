@@ -22,7 +22,6 @@ from app.database import rubric as rubric_db
 from app.database import staff as staff_db
 from app.database import student as student_db
 from app.database import studentpaper as studentpaper_db
-from app.database import decision as decision_db
 
 # Grades can be saved or claimed only in these assignment statuses.
 GRADING = ('grading', 'in_review')
@@ -88,8 +87,8 @@ class GradingService:
         assignment = grading_db.lock_mapping(conn, writing, exam, uid, qid)
         if assignment is None:
             raise HTTPException(404, 'Grading assignment not found')
-        decision = decision_db.get_decision_by_student_question(conn, uid, qid, exam_ID=exam)
-        selected = decision_db.get_decision_label(conn, decision['record_id'], exam_ID=exam) if decision else []
+        decision = self.db.get_decision_by_student_question(uid, qid, exam_ID=exam)
+        selected = self.db.get_decision_label(decision['record_id'], exam_ID=exam) if decision else []
         paper = studentpaper_db.paper_path(conn, exam, uid)
         data = dict(exam_ID=exam, UID=uid, QID=qid, assignment=assignment,
                     **snapshot, decision=decision, selected_labels=selected,
@@ -140,7 +139,7 @@ class GradingService:
                 status = 'Regrade'
             self.db.update_assignment_status(uid, qid, status, exam_ID=exam)
             # The database applies the question's scoring and limits, so report what it saved.
-            score = decision_db.get_decision(conn, record, exam_ID=exam)['scores']
+            score = self.db.get_decision(record, exam_ID=exam)['scores']
             return dict(record_ID=record, exam_ID=exam, UID=uid, QID=qid, score=score,
                         labels=labels, comments=comments, status=status)
 
@@ -149,8 +148,8 @@ class GradingService:
         with self.access(exam, qid, edit=True) as (conn, _):
             workflow.require(conn, exam, workflow.OPEN, 'Changing the rubric')
             match(expected, token(self.rubric(conn, exam, qid)))
-            label = label_db.add_label(conn, title, description, deduction, exam_ID=exam)
-            rubric_db.add_rubric_label(conn, qid, label, exam_ID=exam)
+            label = self.db.add_label(title, description, deduction, exam_ID=exam)
+            self.db.add_rubric_label(qid, label, exam_ID=exam)
             result = grading_db.mark_question_for_regrade(conn, exam, qid)
             return dict(exam_ID=exam, QID=qid, label_ID=label,
                         affected_mappings=result, status='Regrade')

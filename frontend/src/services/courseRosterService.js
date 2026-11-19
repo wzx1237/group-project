@@ -36,13 +36,3 @@ export async function upsertStudentRecord(courseId, studentData) {
 export async function updateStudentEnrollmentStatus(courseId, uid, status) {
   return apiClient.patch(`/courses/${courseId}/roster/${encodeURIComponent(uid)}`, { status })
 }
-
-// invites or adds a new teaching assistant to the course staff roster
-export async function addCourseTA(courseId, identifier, role = 'TA') {
-  return apiClient.post('/staff', { identifier, role, course_id: courseId })
-}
-
-// removes a teaching assistant from the course while preserving historical grading decisions
-export async function removeCourseTA(courseId, graderId) {
-  return apiClient.del(`/staff/${encodeURIComponent(graderId)}`)
-}

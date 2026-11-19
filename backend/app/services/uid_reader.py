@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import pymupdf
 
+from app.services.uid_locator import DEFAULT_ASPECT, locate_grid
+
 MODEL_SHA256 = "8275b7a63cd740ab524b5eec49be3214e60b7c204cf88a01b377fb2a93f885ad"
 CLASSES = tuple("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ("blank",)
 BOXES = 9
@@ -20,8 +22,10 @@ BOXES = 9
 
 class UIDReader:
     def __init__(self, model_path: str | Path, uid_region: tuple[float, float, float, float],
-                 min_confidence: float = 0.60, min_margin: float = 0.20):
-        """uid_region is (x0, y0, x1, y1) as fractions of the cover page, around the nine boxes."""
+                 min_confidence: float = 0.60, min_margin: float = 0.20,
+                 grid_aspect: float = DEFAULT_ASPECT):
+        """uid_region is (x0, y0, x1, y1) as fractions of the cover page, around the nine boxes.
+        grid_aspect is the grid's outer width / height, used to recognise it (see uid_locator)."""
         model_path = Path(model_path)
         if hashlib.sha256(model_path.read_bytes()).hexdigest() != MODEL_SHA256:
             raise ValueError("Unexpected UID model file")
@@ -29,6 +33,7 @@ class UIDReader:
         self.uid_region = uid_region
         self.min_confidence = min_confidence
         self.min_margin = min_margin
+        self.grid_aspect = grid_aspect
 
     def read_batch(self, items: list[tuple[str | Path, str | Path | None]]) -> list[dict]:
         """items: (pdf path, optional path to save the UID crop as PNG). Reads page 1 of each PDF.
@@ -100,22 +105,7 @@ class UIDReader:
         if crop_path:
             cv2.imwrite(str(crop_path), cv2.resize(image, None, fx=0.35, fy=0.35, interpolation=cv2.INTER_AREA))
 
-        _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        candidates = []
-        for contour in contours:  # the nine-box row is wide and short
-            _, _, width, height = cv2.boundingRect(contour)
-            if width > 0.65 * image.shape[1] and 5 < width / max(height, 1) < 12:
-                quad = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
-                if len(quad) == 4 and cv2.isContourConvex(quad):
-                    candidates.append((cv2.contourArea(contour), quad.reshape(4, 2).astype(np.float32)))
-        if not candidates:
-            raise ValueError("Could not find the nine-box UID grid")
-        quad = max(candidates, key=lambda c: c[0])[1]
-        sums, diffs = quad.sum(1), quad[:, 1] - quad[:, 0]
-        quad = np.array([quad[sums.argmin()], quad[diffs.argmin()], quad[sums.argmax()], quad[diffs.argmax()]])
-        if len(np.unique(quad, axis=0)) != 4:
-            raise ValueError("Ambiguous UID grid corners")
+        quad = locate_grid(image, self.grid_aspect)
 
         transform = cv2.getPerspectiveTransform(quad, np.float32([[0, 0], [719, 0], [719, 89], [0, 89]]))
         row = cv2.warpPerspective(image, transform, (720, 90), borderValue=255)

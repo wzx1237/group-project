@@ -11,13 +11,14 @@ from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from app import assignments, db, store
+from app import assignments, db, rosters, store
 from app.database import Database
 from app.main import create_app
 from app.routing.auth import current_user
 from app.settings import Settings
 
 real_user_courses = assignments.user_courses  # conftest replaces it with a config.json stand-in
+real_roster_students = rosters.students
 
 
 @pytest.fixture
@@ -247,9 +248,9 @@ def test_conn_functions_follow_the_outer_transaction_and_audit(api):
     _, database = api
     with pytest.raises(RuntimeError, match='abort'):
         with database.audit_context(actor_ID='alice'), database.transaction(), database.get_connection() as conn:
-            created_id = course.create_course(conn, 'ROLLBACK', 'Fall', 'Temporary')
-            staff.add_course_member(conn, created_id, 'alice')
-            exam.create_assignment(conn, created_id, 'Temporary', None, 'rollback-only', 'quiz', None)
+            created = course.create_course(conn, 'ROLLBACK', 'Fall', 'Temporary')
+            staff.add_course_member(conn, created['course_id'], 'alice')
+            exam.create_assignment(conn, created['course_id'], 'Temporary', None, 'rollback-only', 'quiz', None)
             raise RuntimeError('abort')
     with database.get_connection() as conn:
         assert course.course_by_code(conn, 'ROLLBACK') is None
@@ -272,3 +273,58 @@ def test_domain_updates_reject_unknown_columns_before_writing(api):
         assert exam.update_assignment_columns(conn, 1, {}) == 0
         assert course.course_row(conn, 1)['title'] is None
         assert exam.get_assignment(conn, 1)['exam_name'] == 'Quiz 2'
+
+
+def test_roster_students_stay_isolated_across_courses(api, monkeypatch):
+    """adding a shared uid in another course or closing reports must not overwrite another course's student."""
+    client, database = api
+    monkeypatch.setattr(rosters, 'students', real_roster_students)
+    client.app.dependency_overrides[current_user] = lambda: 'teacher'
+
+    # seed a student in course 1 and another course 3 to mirror cmsc250, cmsc451, and cmsc 451
+    third = client.post('/api/courses', json={'code': 'CMSC 451', 'term': 'Fall'}).json()
+    course_3 = third['course_id']
+
+    r1 = client.post('/api/courses/1/roster', json={'uid': '123456789', 'name': 'Will Dunbar'})
+    assert r1.status_code == 201, r1.text
+
+    # add a different student with the same uid to course 2 and then a third student to course 3
+    r2 = client.post('/api/courses/2/roster', json={
+        'uid': '123456789', 'name': 'Cindy', 'email': 'lixin@yatsi.com', 'section': '0101',
+    })
+    assert r2.status_code == 201, r2.text
+
+    csv_content = 'UID,Name,Email,Section\n123456789,David,zwanglg@connect.ust.cn,0101\n'
+    r3 = client.post(
+        f'/api/courses/{course_3}/roster/upload',
+        files={'file': ('roster.csv', csv_content, 'text/csv')},
+    )
+    assert r3.status_code == 201, r3.text
+
+    # release/close an assignment in course 2 and verify course 1 and course 2 rosters stay intact
+    with database.get_connection() as conn:
+        conn.execute("UPDATE assignment SET status='in_review' WHERE slug='hidden'")
+        conn.execute("INSERT INTO assignment_student (exam_id, uid, status) VALUES (4, '123456789', 'no_show')")
+    closed = client.put('/api/assignments/hidden/status', json={'status': 'closed'})
+    assert closed.status_code == 200, closed.text
+
+    roster_1 = client.get('/api/courses/1/roster').json()
+    roster_2 = client.get('/api/courses/2/roster').json()
+    roster_3 = client.get(f'/api/courses/{course_3}/roster').json()
+
+    assert [(s['uid'], s['name'], s['email']) for s in roster_1] == [('123456789', 'Will Dunbar', None)]
+    assert [(s['uid'], s['name'], s['email']) for s in roster_2] == [('123456789', 'Cindy', 'lixin@yatsi.com')]
+    assert [(s['uid'], s['name'], s['email']) for s in roster_3] == [('123456789', 'David', 'zwanglg@connect.ust.cn')]
+
+    # verify grades csv and reports use each course's own student name and email
+    csv_resp = client.get('/api/assignments/hidden/grades.csv')
+    assert csv_resp.status_code == 200
+    assert 'Cindy,lixin@yatsi.com,123456789' in csv_resp.text
+    assert 'David' not in csv_resp.text
+
+    # updating the uid inside course 2 updates only course 2
+    upd = client.post('/api/courses/2/roster', json={'uid': '123456789', 'name': 'Cindy Updated'})
+    assert upd.status_code == 201
+    assert upd.json()['name'] == 'Cindy Updated'
+    assert client.get('/api/courses/1/roster').json()[0]['name'] == 'Will Dunbar'
+    assert client.get(f'/api/courses/{course_3}/roster').json()[0]['name'] == 'David'

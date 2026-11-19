@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
+import { usePdfFile } from '@/hooks/usePdfFile'
 import { parentQid, partsOf } from '@/lib/rubric'
 import { PageThumbnail } from './PageThumbnail'
 import { PdfToolbar } from './pdfToolbar'
@@ -53,6 +54,7 @@ export function PdfCanvasViewer({
   const [page, setPage] = useState(1)
   const [zoomIndex, setZoomIndex] = useState(ZOOMS.indexOf(1))
   const [uncontrolledShowRegions, setUncontrolledShowRegions] = useState(true)
+  const { file, loading: fetching, error: fetchError } = usePdfFile(url)
 
   const pageCount = loaded.url === url ? loaded.pageCount : 0
   const pages = Array.from({ length: pageCount }, (_, i) => i + 1)
@@ -120,56 +122,66 @@ export function PdfCanvasViewer({
         onToggleRegions={handleToggleRegions}
       />
       {/* A new Document per file: reusing one while its pages still load crashes PDF.js. */}
-      <Document
-        key={url}
-        className={styles.canvas}
-        file={url}
-        onLoadSuccess={handleLoad}
-        loading={<p className={styles.message}>Loading exam…</p>}
-        error={<p className={styles.message}>This exam&apos;s PDF couldn&apos;t be loaded.</p>}
-      >
-        <ol className={styles.thumbnails} aria-label="Pages">
-          {pages.map((n) => (
-            <PageThumbnail key={n} pageNumber={n} active={n === page} onSelect={() => pageRefs.current[n - 1]?.scrollIntoView()} />
-          ))}
-        </ol>
-        <div ref={stageRef} className={styles.stage} onScroll={handleScroll}>
-          {pages.map((n) => (
-            <div
-              key={n}
-              ref={(el) => {
-                pageRefs.current[n - 1] = el
-              }}
-              className={styles.page}
-            >
-              <Page
-                pageNumber={n}
-                width={PAGE_WIDTH * ZOOMS[zoomIndex]}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                onRenderSuccess={() => handleRendered(n)}
-              />
-              {showRegions &&
-                questions
-                  .filter((q) => q.region?.page === n && outlined(questions, q))
-                  .map(({ qid, title, region }) => (
-                    <div
-                      key={qid}
-                      className={[styles.region, focused.has(qid) && styles.focusedRegion].filter(Boolean).join(' ')}
-                      style={{
-                        left: `${region.x * 100}%`,
-                        top: `${region.y * 100}%`,
-                        width: `${region.width * 100}%`,
-                        height: `${region.height * 100}%`,
-                      }}
-                    >
-                      <span className={styles.regionTag}>{title ? `${qid} · ${title}` : qid}</span>
-                    </div>
-                  ))}
-            </div>
-          ))}
+      {fetchError ? (
+        <div className={styles.canvas}>
+          <p className={styles.message}>This exam&apos;s PDF couldn&apos;t be loaded.</p>
         </div>
-      </Document>
+      ) : !file ? (
+        <div className={styles.canvas}>
+          <p className={styles.message}>{fetching ? 'Loading exam…' : 'No exam PDF available.'}</p>
+        </div>
+      ) : (
+        <Document
+          key={url}
+          className={styles.canvas}
+          file={file}
+          onLoadSuccess={handleLoad}
+          loading={<p className={styles.message}>Loading exam…</p>}
+          error={<p className={styles.message}>This exam&apos;s PDF couldn&apos;t be loaded.</p>}
+        >
+          <ol className={styles.thumbnails} aria-label="Pages">
+            {pages.map((n) => (
+              <PageThumbnail key={n} pageNumber={n} active={n === page} onSelect={() => pageRefs.current[n - 1]?.scrollIntoView()} />
+            ))}
+          </ol>
+          <div ref={stageRef} className={styles.stage} onScroll={handleScroll}>
+            {pages.map((n) => (
+              <div
+                key={n}
+                ref={(el) => {
+                  pageRefs.current[n - 1] = el
+                }}
+                className={styles.page}
+              >
+                <Page
+                  pageNumber={n}
+                  width={PAGE_WIDTH * ZOOMS[zoomIndex]}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  onRenderSuccess={() => handleRendered(n)}
+                />
+                {showRegions &&
+                  questions
+                    .filter((q) => q.region?.page === n && outlined(questions, q))
+                    .map(({ qid, title, region }) => (
+                      <div
+                        key={qid}
+                        className={[styles.region, focused.has(qid) && styles.focusedRegion].filter(Boolean).join(' ')}
+                        style={{
+                          left: `${region.x * 100}%`,
+                          top: `${region.y * 100}%`,
+                          width: `${region.width * 100}%`,
+                          height: `${region.height * 100}%`,
+                        }}
+                      >
+                        <span className={styles.regionTag}>{title ? `${qid} · ${title}` : qid}</span>
+                      </div>
+                    ))}
+              </div>
+            ))}
+          </div>
+        </Document>
+      )}
       <div className={styles.status}>{pageCount > 0 && `Page ${page} / ${pageCount}`}</div>
     </div>
   )

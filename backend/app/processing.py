@@ -1,9 +1,8 @@
 """Process an uploaded master PDF: find cover pages, then split it into one PDF per exam."""
 
-import json
 import shutil
 
-from app import config, rosters, store
+from app import config, rosters, store, template_spec
 from app.services.cover_detector import CoverDetector
 from app.services.matching import decide
 from app.services.pdf_splitter import split_by_covers
@@ -51,14 +50,15 @@ def match_upload(assignment_id: str, upload_id: str, pool, course_id: int) -> No
         upload = next(u for u in assignment["uploads"] if u["id"] == upload_id)
         submissions = upload["submissions"]
 
-        region = tuple(json.loads((TEMPLATE_DIR / f"{assignment_id}.json").read_text())["uid_region"])
+        spec = template_spec.load(TEMPLATE_DIR / f"{assignment_id}.json")
         folder = store.SUBMISSION_DIR / assignment_id / upload_id
         items = [(folder / s["filename"], folder / f"{s['id']}_uid.png") for s in submissions]
         cfg = config.load()
         model_path = store.DATA_DIR / cfg["uid_model"]
         if not model_path.exists():
             raise FileNotFoundError(f"UID model not found: {model_path}")
-        reader = UIDReader(model_path, region, cfg["uid_min_confidence"], cfg["uid_min_margin"])
+        reader = UIDReader(model_path, template_spec.uid_region(spec), cfg["uid_min_confidence"], cfg["uid_min_margin"],
+                           spec["uid_box"]["aspect"])
         reads = reader.read_batch(items)
 
         roster = {student["uid"]: student for student in rosters.students(pool, course_id=course_id)}

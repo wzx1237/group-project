@@ -36,7 +36,6 @@ def _directory_lock(directory: Path):
       finally:
         handle.seek(0)
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-    # used in Linu system:
     else:
       import fcntl
       fcntl.flock(handle.fileno(), fcntl.LOCK_EX)

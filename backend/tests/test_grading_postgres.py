@@ -336,8 +336,7 @@ def test_label_recalculation_failure_rolls_back_definition(native, monkeypatch):
     # It must roll back the label and every derived score.
     def fail(*args):
         raise psycopg.errors.NumericValueOutOfRange('recalculation failed')
-    from app.database import decision
-    monkeypatch.setattr(decision, '_recalculate_score', fail)
+    monkeypatch.setattr(type(database), '_recalculate_score', fail)
     with pytest.raises(psycopg.errors.NumericValueOutOfRange):
         database.edit_label(2,'Too large',None,999,exam_ID=1)
     assert database.get_label(2,exam_ID=1)['deduction']==-1

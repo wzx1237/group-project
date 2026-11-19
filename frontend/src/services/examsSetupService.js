@@ -23,12 +23,29 @@ export async function fetchBlankExam(examId) {
   return new File([await response.blob()], 'blank-exam.pdf', { type: 'application/pdf' })
 }
 
-// uploads the blank exam, which also sets up splitting scans by their cover page, or the answer key
-export async function uploadExamTemplatePdf(examId, file, fileType = 'blank_exam') {
+// the layout the server wants: { mode: 'uid_box', rect: [x0, y0, x1, y1] } (page fractions) or { mode: 'full_page' }
+const layoutField = ({ mode, rect }) => JSON.stringify(mode === 'full_page' ? { mode } : { mode, rect })
+
+// uploads the blank exam, which also sets up splitting scans by their cover page, or the answer key.
+// A blank exam needs coverLayout, saying where the UID boxes are.
+export async function uploadExamTemplatePdf(examId, file, fileType = 'blank_exam', coverLayout = null) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('type', fileType)
+  if (fileType === 'blank_exam') {
+    if (!coverLayout) throw new Error('mark where the UID boxes are on the blank exam first')
+    formData.append('cover_layout', layoutField(coverLayout))
+  }
   return apiClient.upload(`/assignments/${examId}/templates`, formData)
+}
+
+// Asks the server where the UID boxes are on the blank exam's first page for a layout, without saving anything.
+// Returns { mode, rect (snapped to the nine-box grid), aspect, preview_png, errors }.
+export async function previewCoverLayout(file, layout) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('cover_layout', layoutField(layout))
+  return apiClient.post('/cover-layout/preview', formData)
 }
 
 const amount = (n) => Math.round((Number(n) || 0) * 100) / 100

@@ -5,15 +5,19 @@ def students(conn, *, course_id=None, code=None, term=None) -> list[dict]:
     """Students, including section and enrollment status, in one course offering."""
     if course_id is not None:
         return conn.execute(
-        """SELECT s.uid, s.name, s.directory_id, s.email, en.section, en.status
+        """SELECT s.uid, COALESCE(en.name, s.name) AS name, s.directory_id,
+                  CASE WHEN en.name IS NOT NULL THEN en.email ELSE s.email END AS email,
+                  en.section, en.status
         FROM student s JOIN enrollment en USING (uid)
-        WHERE en.course_id = %s ORDER BY s.name""",
+        WHERE en.course_id = %s ORDER BY COALESCE(en.name, s.name)""",
         (course_id,),
     ).fetchall()
     return conn.execute(
-        """SELECT s.uid, s.name, s.directory_id, s.email, en.section, en.status
+        """SELECT s.uid, COALESCE(en.name, s.name) AS name, s.directory_id,
+                  CASE WHEN en.name IS NOT NULL THEN en.email ELSE s.email END AS email,
+                  en.section, en.status
         FROM student s JOIN enrollment en USING (uid) JOIN course c USING (course_id)
-        WHERE c.code = %s AND c.term = %s ORDER BY s.name""",
+        WHERE c.code = %s AND c.term = %s ORDER BY COALESCE(en.name, s.name)""",
         (code, term),
     ).fetchall()
 

@@ -51,12 +51,12 @@ function parseTerm(termStr) {
     semesterDisplay = 'Winter'
   }
 
-  const fourDigit = clean.match(/\b(19\d{2}|20\d{2})\b/)
+  const fourDigit = clean.match(/(?:^|\D)(19\d{2}|20\d{2})(?!\d)/)
   let year = 0
   if (fourDigit) {
     year = parseInt(fourDigit[1], 10)
   } else {
-    const twoDigit = clean.match(/\b'?([2-9]\d)\b/)
+    const twoDigit = clean.match(/(?:^|\D)'?([2-9]\d)(?!\d)/)
     if (twoDigit) {
       year = 2000 + parseInt(twoDigit[1], 10)
     }
@@ -186,10 +186,19 @@ function AddCourseDialog({ initialTerm = '', onClose, onCreated }) {
 
   async function handleSubmit(event) {
     event.preventDefault()
+    const payload = {
+      code: form.code.trim(),
+      title: form.title.trim(),
+      term: form.term.trim(),
+    }
+    if (!payload.code || !payload.term) {
+      setError('Enter a course code and term')
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await onCreated(await createCourse(form))
+      await onCreated(await createCourse(payload))
     } catch (err) {
       setError(err.message)
       setSaving(false)
@@ -254,10 +263,19 @@ function EditCourseDialog({ course, onClose, onUpdated }) {
 
   async function handleSubmit(event) {
     event.preventDefault()
+    const payload = {
+      code: form.code.trim(),
+      title: form.title.trim(),
+      term: form.term.trim(),
+    }
+    if (!payload.code || !payload.term) {
+      setError('Enter a course code and term')
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await onUpdated(course.id ?? course.course_id, form)
+      await onUpdated(course.id ?? course.course_id, payload)
     } catch (err) {
       setError(err.message)
       setSaving(false)
@@ -423,15 +441,13 @@ export default function CoursesDashboardPage() {
   const [editingCourse, setEditingCourse] = useState(null)
   const [imageCourse, setImageCourse] = useState(null)
 
-  // Local storage customization cache for immediate reactivity and persistence
-  const [courseCustomizations, setCourseCustomizations] = useState(() => {
-    if (typeof window === 'undefined') return {}
+  // clear any stale local course overrides so dashboard always matches backend data
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     try {
-      return JSON.parse(localStorage.getItem('gradeflow_course_customizations') || '{}')
-    } catch {
-      return {}
-    }
-  })
+      localStorage.removeItem('gradeflow_course_customizations')
+    } catch {}
+  }, [])
 
   // Close options menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -462,33 +478,11 @@ export default function CoursesDashboardPage() {
   }
 
   async function handleUpdateCourse(courseId, updates) {
-    // 1. Immediately store customization in local state & localStorage
-    const next = {
-      ...courseCustomizations,
-      [courseId]: {
-        ...(courseCustomizations[courseId] || {}),
-        ...updates,
-      },
+    // persist to backend and refresh shared course context so all pages stay consistent
+    await updateCourse(courseId, updates)
+    if (typeof refresh === 'function') {
+      await refresh()
     }
-    setCourseCustomizations(next)
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('gradeflow_course_customizations', JSON.stringify(next))
-      } catch (e) {
-        console.warn('LocalStorage save notice:', e)
-      }
-    }
-
-    // 2. Persist to backend API
-    try {
-      await updateCourse(courseId, updates)
-      if (typeof refresh === 'function') {
-        await refresh()
-      }
-    } catch (err) {
-      console.warn('Backend course update notice:', err.message)
-    }
-
     setEditingCourse(null)
     setImageCourse(null)
   }
@@ -513,28 +507,14 @@ export default function CoursesDashboardPage() {
     return map
   }, [courses])
 
-  // Merge courses with local customizations (overrides and images)
-  const enrichedCourses = useMemo(() => {
-    if (!courses) return []
-    return courses.map((c) => {
-      const id = c.id ?? c.course_id
-      const custom = courseCustomizations[id] || {}
-      return {
-        ...c,
-        ...custom,
-        image: custom.image !== undefined ? custom.image : c.image,
-      }
-    })
-  }, [courses, courseCustomizations])
-
   // Group and sort courses by semester and year
   const { currentGroups, olderGroups } = useMemo(() => {
-    if (!enrichedCourses || enrichedCourses.length === 0) {
+    if (!courses || courses.length === 0) {
       return { currentGroups: [], olderGroups: [] }
     }
 
     const groupsMap = new Map()
-    for (const course of enrichedCourses) {
+    for (const course of courses) {
       const parsed = parseTerm(course.term)
       const key = parsed.displayName
       if (!groupsMap.has(key)) {
@@ -580,7 +560,7 @@ export default function CoursesDashboardPage() {
     }
 
     return { currentGroups: current, olderGroups: older }
-  }, [enrichedCourses])
+  }, [courses])
 
   const addCourseDialog = showAddCourse && (
     <AddCourseDialog

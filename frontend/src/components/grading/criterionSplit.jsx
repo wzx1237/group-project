@@ -99,7 +99,7 @@ export function CriterionSplitDialog({ criterion, question, label, onSplit, onCl
                 ref={i === 0 ? firstTitle : undefined}
                 className={styles.input}
                 aria-label={`Criterion ${LETTERS[i]} title`}
-                maxLength={50}
+                maxLength={500}
                 placeholder={i === 0 ? 'e.g. Dropped x in the final answer' : 'e.g. Dropped x in the working'}
                 value={row.title}
                 onChange={(e) => update(i, { title: e.target.value })}

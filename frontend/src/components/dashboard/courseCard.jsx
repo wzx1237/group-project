@@ -40,6 +40,10 @@ export function CourseCard({ course, assignments = [], staff, studentCount, onOp
   const base = coursePath(course)
   const isInstructor = course.role === 'instructor'
   const taCount = staff?.filter((person) => person.role?.toLowerCase() === 'ta').length
+  // format course heading the same way as the dashboard course tile
+  const courseFullTitle = [course.code, course.title || course.name || course.instructor?.toUpperCase()]
+    .filter(Boolean)
+    .join(' · ')
   const details = [
     course.term,
     studentCount != null && plural(studentCount, 'student'),
@@ -52,7 +56,7 @@ export function CourseCard({ course, assignments = [], staff, studentCount, onOp
       <header className={styles.heading}>
         <div className={styles.identity}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2 className={styles.title}>{course.code} · {course.title || course.name || 'Course'}</h2>
+            <h2 className={styles.title}>{courseFullTitle}</h2>
             <RoleBadge role={course.role || 'Professor'} />
           </div>
           <p className={styles.details}>{details.join(' · ')}</p>

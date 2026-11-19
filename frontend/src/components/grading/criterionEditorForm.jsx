@@ -56,7 +56,7 @@ export function CriterionEditorForm({ initialCriterion, question, onSave, onCanc
         </div>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Title · shown to students</span>
-          <input className={styles.input} maxLength={50} value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className={styles.input} maxLength={500} value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
       </div>
       <label className={styles.field}>

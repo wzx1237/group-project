@@ -135,7 +135,7 @@ def test_backfill_from_existing_rows(dsn, tmp_path):
             conn.execute("INSERT INTO studentpaper VALUES (2,%s,'p.pdf',NULL)", (ALICE,))
             conn.execute("INSERT INTO rubric(exam_id,qid,grading_method) VALUES (3,'Q1','manual')")
         assert db.migrate(scoped) == ['010_assignment_status.sql', '011_assignment_student.sql', '012_course_image.sql',
-                                      '013_regrade_queues.sql', '014_answer_locks.sql']
+                                      '013_regrade_queues.sql', '014_answer_locks.sql', '015_enrollment_student_info.sql']
         with psycopg.connect(scoped, row_factory=dict_row) as conn:
             found = {r['slug']: r['status'] for r in conn.execute('SELECT slug, status FROM assignment')}
             assert found == {'released': 'closed', 'papers': 'grading', 'ready': 'collecting',

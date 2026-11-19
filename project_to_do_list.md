@@ -6,7 +6,7 @@
 
 * [x] **Complete Regrade Routes:** Implement and thoroughly test all regrade routes (noted as the most prominent functionality sought by the customer).
 * [x] **Grader Workflow & Concurrency Locking:** Implement and verify robust concurrency locking when an exam or question is fed to a TA or instructor. Prevent race conditions and simultaneous edits when multiple graders work concurrently, with clear lock ownership, handling transitions vs. collisions, and release mechanisms.
-* [ ] **Fix Demo Glitches:** Identify and resolve the small defects observed during the grading demo ("needs lots of serious shaking out").
+* [x] **Fix Demo Glitches:** Identify and resolve the small defects observed during the grading demo ("needs lots of serious shaking out").
 * [ ] **Code Cleanup (Claude Report):** Review and implement the code quality and architecture suggestions from the Claude report before final delivery.
 * [ ] **Spec Addendum / Alignment:** Document any small, understandable differences between the current system and the original specification (e.g., via an addendum to the spec) to ensure 100% consistency at final delivery.
 
@@ -25,6 +25,7 @@
 * [x] **Splitting Criterion:** Implement splitting criterion based on the Grading Workspace Figma design (`Row 3, Col 6`).
 * [x] **Import Previous Rubric:** Build a way to import a previously used rubric into the workspace. *(Copy questions/criteria from prior assignments across the user's courses or via Markdown import/export inside [`RubricPanel`](frontend/src/components/grading/rubricPanel.jsx) on both the grading workspace and setup/edit wizards, backed by `GET /api/rubrics/sources`, `POST /api/assignments/{id}/rubric/copy`, `POST /api/assignments/{id}/rubric/import`, and `GET /api/assignments/{id}/rubric/export`.)*
 * [X] **Toggle feature for regions:** Add a toggle to show/hide the regions
+* [ ] Add a space to add/deduct point with the overall comment box at the end of every exam
 
 
 ### Student Reports, Exporting & ELMS Integration

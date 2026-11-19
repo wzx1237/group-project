@@ -27,6 +27,10 @@ export async function request(path, options = {}) {
       const json = await response.json()
       detail = json.detail || json.message || detail
     } catch {}
+    // format validation error arrays returned by fastapi
+    if (Array.isArray(detail)) {
+      throw new Error(detail.map((item) => item?.msg || String(item)).filter(Boolean).join('. ') || `request failed (${response.status})`)
+    }
     // Workflow refusals send { message, problems?, confirm_required? }; keep them on the error for the caller.
     if (detail && typeof detail === 'object') {
       const error = new Error([detail.message, ...(detail.problems || [])].filter(Boolean).join('. '))

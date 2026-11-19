@@ -45,3 +45,6 @@ docker-compose.override.yml
 /*.pdf
 /*.txt
 /*.xlsx
+
+# Installed by install.sh: Node, Python, uv and the local PostgreSQL cluster
+/.tools/

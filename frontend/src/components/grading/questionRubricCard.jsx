@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronRight, Lock, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { formatPoints, gradingProgress, partLabel, plural, questionPoints, scoringOf } from '@/lib/rubric'
+import { formatPoints, gradingProgress, partLabel, plural, questionPoints, scoreLimitNote, scoringOf } from '@/lib/rubric'
 import { CommentAndNotesBox } from './commentAndNotesBox'
 import { CriterionEditorForm } from './criterionEditorForm'
 import { CriterionRow } from './criterionRow'
@@ -46,6 +46,7 @@ export function QuestionRubricCard(props) {
   // Another grader is working on this answer, so it is read-only here until they let go or it is taken over.
   const lock = grading?.locks?.[qid]
   const lockedOut = Boolean(lock && !lock.mine)
+  const limitNote = grading && !hasParts ? scoreLimitNote(question, grading.decisions[qid]) : null
 
   function handleTakeOver() {
     if (window.confirm(`Take over this answer from ${lock.holder_name}? They won't be able to save it until they take it back.`)) {
@@ -206,6 +207,13 @@ export function QuestionRubricCard(props) {
                 </li>
               )}
             </ul>
+          )}
+
+          {limitNote && (
+            <p className={styles.waiting} role="status">
+              <AlertTriangle {...icon} />
+              <span className={styles.waitingText}>{limitNote}</span>
+            </p>
           )}
 
           {newCriterion && (

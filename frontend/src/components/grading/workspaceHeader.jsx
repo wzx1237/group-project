@@ -28,7 +28,9 @@ export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, po
       <div className={styles.student}>
         <Avatar name={student.name} className={styles.avatar} />
         <div className={styles.details}>
-          <h1 className={styles.name}>{student.name}</h1>
+          <h1 className={styles.name} title={student.name}>
+            {student.name}
+          </h1>
           <p className={styles.meta}>
             Student ID {student.uid}
             {uploadedAt && ` · Uploaded ${formatUploaded(uploadedAt)}`}

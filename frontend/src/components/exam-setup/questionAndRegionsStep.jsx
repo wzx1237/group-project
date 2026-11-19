@@ -73,7 +73,8 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '24px', minHeight: '520px' }}>
+      {/* minmax(0, …) and minWidth: 0 let many page tabs scroll instead of widening the column off the screen */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '24px', minHeight: '520px' }}>
         <div
           style={{
             background: '#f9fafb',
@@ -82,13 +83,14 @@ export function QuestionAndRegionsStep({ blankPdf, initialQuestions = [], totalE
             padding: '20px',
             display: 'flex',
             flexDirection: 'column',
+            minWidth: 0,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
               {blankPdf ? `${blankPdf.name} · Page ${currentPage} of ${numPages || '…'}` : 'No exam PDF uploaded'}
             </span>
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '2px', minWidth: 0 }}>
               {Array.from({ length: numPages }, (_, i) => i + 1).map((page) => (
                 <button
                   key={page}

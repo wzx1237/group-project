@@ -31,9 +31,14 @@ function stateOf(upload, exam) {
 }
 
 // Every exam split out of the uploaded PDFs, with the student it belongs to.
-export function OcrStudentMatcherList({ examId, uploads, students, onAssign, onUnassign }) {
+export function OcrStudentMatcherList({ examId, uploads, students, onAssign, onUnassign, onRemove }) {
   const [filter, setFilter] = useState(null)
   const [assigning, setAssigning] = useState(null)
+
+  function remove(upload, exam) {
+    const question = `Remove exam ${Number(exam.id)}? It won't be matched or graded. Its pages stay in the uploaded PDF.`
+    if (window.confirm(question)) onRemove(upload.id, exam.id)
+  }
 
   const byUid = Object.fromEntries(students.map((s) => [s.uid, s]))
   const exams = uploads
@@ -119,6 +124,11 @@ export function OcrStudentMatcherList({ examId, uploads, students, onAssign, onU
                     {state === 'review' && (
                       <Button size="sm" variant="primary" onClick={() => setAssigning(key)} disabled={assigning === key}>
                         Assign
+                      </Button>
+                    )}
+                    {(state === 'review' || state === 'unmatched') && (
+                      <Button size="sm" onClick={() => remove(upload, exam)}>
+                        Remove
                       </Button>
                     )}
                   </div>

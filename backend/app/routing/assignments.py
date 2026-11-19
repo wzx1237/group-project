@@ -3,6 +3,7 @@
 from datetime import date
 from typing import Annotated, Literal
 
+import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -69,7 +70,12 @@ def create_course(body: CourseIn, request: Request, user: Staff):
         staff = staff_db.staff_role(conn, user)
         if staff is None or staff['role'] != 'instructor':
             raise HTTPException(403, 'Only instructors can create courses')
-        row = course_db.create_course(conn, code, term, title)
+        # serialize course writes so concurrent requests cannot create duplicate courses
+        conn.execute('SELECT pg_advisory_xact_lock(435027)')
+        try:
+            row = course_db.create_course(conn, code, term, title)
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, f'{code} {term} already exists')
         if row is None:
             raise HTTPException(409, f'{code} {term} already exists')
         staff_db.add_course_member(conn, row['course_id'], user)
@@ -83,8 +89,9 @@ def edit_course(course_id: int, body: CourseEdit, request: Request, user: Staff)
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
         if not assignments.is_member(conn, course_id, user):
             raise HTTPException(403, 'Not a member of this course')
-        # change to course exist
-        existing = course_db.course_exists(conn, course_id)
+        # serialize course writes so concurrent edits cannot produce duplicate courses
+        conn.execute('SELECT pg_advisory_xact_lock(435027)')
+        existing = course_db.course_row(conn, course_id)
         if existing is None:
             raise HTTPException(404, 'Course not found')
 
@@ -97,7 +104,18 @@ def edit_course(course_id: int, body: CourseEdit, request: Request, user: Staff)
             if field in ("code", "term") and not value:
                 raise HTTPException(422, f"Course {field} cannot be empty")
             changes[field] = value or None
-        course_db.update_course_columns(conn, course_id, changes)
+
+        if "code" in changes or "term" in changes:
+            next_code = changes.get("code", existing["code"])
+            next_term = changes.get("term", existing["term"])
+            # reject edits that match another course in the same semester and year
+            if course_db.find_conflicting_course(conn, next_code, next_term, exclude_course_id=course_id) is not None:
+                raise HTTPException(409, f'{next_code} {next_term} already exists')
+
+        try:
+            course_db.update_course_columns(conn, course_id, changes)
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, f'{changes.get("code", existing["code"])} {changes.get("term", existing["term"])} already exists')
 
         return next((c for c in courses_for(conn, user) if c['course_id'] == course_id), None)
 

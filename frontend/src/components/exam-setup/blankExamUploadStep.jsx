@@ -3,19 +3,26 @@
 import { useState } from 'react'
 import { FileCheck, FileText, UploadCloud } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { UidRegionPicker } from './uidRegionPicker'
 
 // renders step 1 of the exam setup wizard for uploading templates and exam metadata
 const KINDS = ['exam', 'final exam', 'homework', 'lab', 'quiz', 'essay', 'other']
 const kindLabel = (k) => k.replace(/\b\w/g, (c) => c.toUpperCase())
 
 // pdfLocked: the blank exam can't be replaced (the assignment is past draft); nextLabel names the step Continue goes to
+// savedPdf: the blank exam already on the server. Any other PDF needs its UID box location confirmed before continuing.
+// skipSavesPdf: the skip button saves the chosen PDF too, so it needs the confirmed location as well
+// skipWithPdfLabel: the skip button's text once a PDF is chosen (it then saves the PDF instead of skipping it)
 export function BlankExamUploadStep({
   initialData = {},
   onNext,
   onSkip,
   skipLabel = 'Skip blank exam & rubric',
+  skipWithPdfLabel = null,
   requirePdf = true,
   pdfLocked = false,
+  savedPdf = null,
+  skipSavesPdf = false,
   nextLabel = 'Questions and Regions',
 }) {
   const [kind, setKind] = useState(initialData.kind || 'exam')
@@ -25,11 +32,33 @@ export function BlankExamUploadStep({
   const [blankPdf, setBlankPdf] = useState(initialData.blankPdf || null)
   const [error, setError] = useState('')
   const [skipping, setSkipping] = useState(false)
+  const [coverLayout, setCoverLayout] = useState(initialData.coverLayout || null) // { mode, rect }, once the server found the boxes
+  const [pickerKey, setPickerKey] = useState(0)
+  // the saved PDF's UID box can be marked again without replacing the PDF (kept when coming back from a later step)
+  const [redrawing, setRedrawing] = useState(Boolean(initialData.coverLayout) && blankPdf === savedPdf)
 
-  // handles the selection of the blank exam template pdf file
+  // a PDF that isn't the saved one (new, or replacing it), or a saved one being re-marked, needs its UID box
+  // location confirmed
+  const layoutNeeded = Boolean(blankPdf) && !pdfLocked && (blankPdf !== savedPdf || redrawing)
+  const canRedraw = Boolean(blankPdf) && !pdfLocked && blankPdf === savedPdf && !redrawing
+  const layoutMissing = layoutNeeded && !coverLayout
+  const layoutMessage = 'please mark where the UID boxes are on the blank exam and wait for them to be found'
+
+  // handles the selection of the blank exam template pdf file; its UID box location starts over
   function handleBlankPdfChange(event) {
     const file = event.target.files?.[0]
-    if (file) setBlankPdf(file)
+    if (!file) return
+    setBlankPdf(file)
+    setRedrawing(false)
+    setCoverLayout(null)
+    setPickerKey((key) => key + 1)
+  }
+
+  // starts marking the saved blank exam's UID box again, or goes back to the saved location
+  function setMarkingAgain(again) {
+    setRedrawing(again)
+    setCoverLayout(null)
+    setPickerKey((key) => key + 1)
   }
 
   // validates input fields and advances wizard to the next configuration step
@@ -44,6 +73,9 @@ export function BlankExamUploadStep({
     if (requirePdf && !blankPdf) {
       return setError('please upload the blank exam pdf; its cover page is how scans get split into one exam per student')
     }
+    if (layoutMissing) {
+      return setError(layoutMessage)
+    }
     setError('')
     onNext({
       kind,
@@ -51,15 +83,17 @@ export function BlankExamUploadStep({
       totalPoints: Number(totalPoints),
       dueDate,
       blankPdf,
+      coverLayout: layoutNeeded ? coverLayout : null,
     })
   }
 
   // creates the assignment from just its type, title and due date, without a blank exam or rubric
   async function handleSkip() {
     if (!title.trim()) return setError('please enter a title')
+    if (skipSavesPdf && layoutMissing) return setError(layoutMessage)
     setError('')
     setSkipping(true)
-    await onSkip({ kind, title: title.trim(), dueDate, blankPdf })
+    await onSkip({ kind, title: title.trim(), dueDate, blankPdf, coverLayout: layoutNeeded ? coverLayout : null })
     setSkipping(false)
   }
 
@@ -174,11 +208,38 @@ export function BlankExamUploadStep({
         </label>
       </div>
 
+      {canRedraw && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#6b7280' }}>
+          <span>The UID box location saved with this blank exam stays unless you change it.</span>
+          <Button variant="secondary" size="sm" onClick={() => setMarkingAgain(true)}>
+            Change UID box location
+          </Button>
+        </div>
+      )}
+
+      {layoutNeeded && blankPdf === savedPdf && (
+        <div style={{ fontSize: '13px', color: '#6b7280' }}>
+          Marking the UID box again on the saved blank exam.{' '}
+          <Button variant="secondary" size="sm" onClick={() => setMarkingAgain(false)}>
+            Keep the saved location
+          </Button>
+        </div>
+      )}
+
+      {layoutNeeded && (
+        <UidRegionPicker
+          key={pickerKey}
+          file={blankPdf}
+          initial={pickerKey === 0 && blankPdf === initialData.blankPdf ? initialData.coverLayout : null}
+          onChange={setCoverLayout}
+        />
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
         <Button variant="secondary" onClick={handleSkip} disabled={skipping}>
-          {skipping ? 'Saving…' : skipLabel}
+          {skipping ? 'Saving…' : skipSavesPdf && blankPdf && !pdfLocked && skipWithPdfLabel ? skipWithPdfLabel : skipLabel}
         </Button>
-        <Button type="submit">
+        <Button type="submit" disabled={layoutMissing}>
           Continue to {nextLabel} →
         </Button>
       </div>

@@ -1,3 +1,5 @@
+`backend/app/database/README.md` 和 `REFACTOR_PLAN.md`。
+
 # GradeFlow Data Storage Overview
 
 GradeFlow keeps its data in two places:

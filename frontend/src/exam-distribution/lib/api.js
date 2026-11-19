@@ -41,6 +41,16 @@ export const getCourseStudents = (courseId) => request(`/courses/${courseId}/ros
 
 export const getCourseStaff = (courseId) => request(`/courses/${courseId}/staff`)
 
+// each returns the course staff after the change
+export const addCourseStaff = (courseId, identifier, name) =>
+  request(`/courses/${courseId}/staff`, { method: 'POST', body: JSON.stringify({ identifier, name }) })
+
+export const removeCourseStaff = (courseId, directoryId) =>
+  request(`/courses/${courseId}/staff/${encodeURIComponent(directoryId)}`, { method: 'DELETE' })
+
+export const renameCourseStaff = (courseId, directoryId, name) =>
+  request(`/courses/${courseId}/staff/${encodeURIComponent(directoryId)}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+
 export const getAssignmentRoster = (assignmentId) => request(`/assignments/${assignmentId}/roster`)
 
 export const matchUpload = (assignmentId, uploadId) =>
@@ -76,3 +86,6 @@ export const markStudent = (assignmentId, uid, mark, note = null) =>
 
 export const unassignSubmission = (assignmentId, uploadId, submissionId) =>
   request(`/assignments/${assignmentId}/uploads/${uploadId}/submissions/${submissionId}/unassign`, { method: 'POST' })
+
+export const removeSubmission = (assignmentId, uploadId, submissionId) =>
+  request(`/assignments/${assignmentId}/uploads/${uploadId}/submissions/${submissionId}`, { method: 'DELETE' })

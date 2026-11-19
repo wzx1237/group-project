@@ -49,6 +49,20 @@ export function scoreWith(question, adjustment) {
 export const questionScore = (question, decision) =>
   scoreWith(question, total(appliedCriteria(question, decision), (c) => c.deduction))
 
+// Tells the grader when the applied criteria go past the question's points or below 0, where the score is cut off.
+export function scoreLimitNote(question, decision) {
+  const applied = appliedCriteria(question, decision)
+  if (!applied.length) return null
+  const start = scoringOf(question) === 'deduct' ? question.total_score : 0
+  const raw = Math.round((start + applied.reduce((sum, c) => sum + c.deduction, 0)) * 100) / 100
+  const shown = raw < 0 ? `−${formatPoints(-raw)}` : formatPoints(raw)
+  if (raw > question.total_score) {
+    return `The applied criteria come to ${shown}, more than this question's ${formatPoints(question.total_score)}. The score is capped at ${formatPoints(question.total_score)}.`
+  }
+  if (raw < 0) return `The applied criteria come to ${shown}, below 0. The score stops at 0 pts.`
+  return null
+}
+
 export function gradingProgress(questions, decisions) {
   const gradable = gradableQuestions(questions)
   const graded = gradable.filter((q) => appliedCriteria(q, decisions[q.qid]).length)

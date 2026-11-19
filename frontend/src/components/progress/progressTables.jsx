@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/Badge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { byLastName } from '@/lib/names'
 import styles from './progressTables.module.css'
 
 const STATUS = {
@@ -68,7 +69,7 @@ export function StudentProgressTable({ students, questions, gradeHref }) {
           </tr>
         </thead>
         <tbody>
-          {students.map((s) => {
+          {[...students].sort(byLastName).map((s) => {
             const { label, tone } = STATUS[s.status]
             return (
               <tr key={s.uid}>

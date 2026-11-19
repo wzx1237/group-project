@@ -211,7 +211,7 @@ def reassign(assignment_id: str,body: ReassignIn,svc: Service):
     with svc.access(exam,body.qid) as (conn,_):
         workflow.require(conn,exam,GRADING,'Reassigning answers')
         if body.grader_directory_id is not None:
-            decision_db._validate_graders(conn, [body.grader_directory_id], exam)
+            svc.db._validate_graders(conn.cursor(),[body.grader_directory_id],exam)
         row=grading_db.reassign_answer(conn, body.grader_directory_id, exam, body.student_uid, body.qid)
         if row is None:
             raise HTTPException(404,'Assignment not found')

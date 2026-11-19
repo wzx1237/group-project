@@ -7,6 +7,7 @@ from html import escape
 from pathlib import Path
 import io
 import re
+import unicodedata
 
 import pymupdf
 
@@ -15,10 +16,12 @@ from app.database import reports as reports_db
 
 CSS = """
 * { font-family: sans-serif; }
-h1 { font-size: 18px; margin: 0; }
+h1 { font-size: 24px; margin: 0; }
 p { margin: 0; font-size: 11px; }
-.meta { color: #718084; margin-bottom: 12px; }
-.total { font-size: 14px; margin: 12px 0 16px; }
+.meta { color: #718084; margin-top: 4px; }
+.assignment { font-size: 13px; margin-top: 12px; }
+.total-label { color: #718084; margin-top: 16px; }
+.total { font-size: 30px; font-weight: bold; margin: 2px 0 18px; }
 .question { margin-top: 14px; }
 .heading { font-size: 12px; font-weight: bold; }
 .criterion { margin-top: 3px; }
@@ -83,7 +86,9 @@ def exam_reports(conn, exam, student=None):
 
 
 def filename(report):
-    return re.sub(r'[^A-Za-z0-9 ._()-]', '', f"{report['name']} ({report['uid']}).pdf")
+    """Name_Surname_UID.pdf: ASCII with no spaces, so it is easy to use on UNIX."""
+    name = unicodedata.normalize('NFKD', report['name'] or '').encode('ascii', 'ignore').decode()
+    return '_'.join(re.sub(r'[^A-Za-z0-9 .-]', '', name).split() + [report['uid']]) + '.pdf'
 
 
 def _scan(path):
@@ -96,10 +101,11 @@ def _scan(path):
 def _html(info, report):
     # include student section number in report header if present
     section_info = f" · Section {escape(str(report['section']))}" if report.get('section') else ''
-    out = [f"<h1>{escape(info['exam_name'])}</h1>",
-           f"<p class='meta'>{escape(info['code'])} · {escape(info['term'])}</p>",
-           f"<p>{escape(report['name'])} · UID {escape(report['uid'])}{section_info}</p>",
-           f"<p class='total'>Total score: <b>{points(report['total'])} / {points(report['possible'])}</b></p>"]
+    out = [f"<h1>{escape(report['name'])}</h1>",
+           f"<p class='meta'>UID {escape(report['uid'])}{section_info}</p>",
+           f"<p class='assignment'>{escape(info['exam_name'])} · {escape(info['code'])} · {escape(info['term'])}</p>",
+           "<p class='total-label'>Total score</p>",
+           f"<p class='total'>{points(report['total'])} / {points(report['possible'])}</p>"]
     if report['no_show']:
         out.append("<p class='ungraded'>Did not take this assignment; every question scores 0.</p>")
     if report['comment']:

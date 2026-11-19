@@ -131,14 +131,14 @@ def exam_student_answers(conn, exam_id) -> list[dict]:
     Each row has uid, name, qid and status (the mapping's status in lower case, 'pending' when it has none).
     """
     return conn.execute(
-        """SELECT st.uid, st.name, r.qid, lower(COALESCE(m.status,'pending')) AS status
+        """SELECT st.uid, COALESCE(en.name, st.name) AS name, r.qid, lower(COALESCE(m.status,'pending')) AS status
         FROM assignment e
         JOIN studentpaper p ON p.exam_id=e.exam_id
         JOIN enrollment en ON en.uid=p.uid AND en.course_id=e.course_id AND COALESCE(en.status,'active')='active'
         JOIN student st ON st.uid=p.uid
         JOIN gradable_question r ON r.exam_id=e.exam_id
         LEFT JOIN mapping m ON m.exam_id=r.exam_id AND m.qid=r.qid AND m.uid=p.uid
-        WHERE e.exam_id=%s ORDER BY st.name, st.uid, r.qid""",
+        WHERE e.exam_id=%s ORDER BY COALESCE(en.name, st.name), st.uid, r.qid""",
         (exam_id,),
     ).fetchall()
 

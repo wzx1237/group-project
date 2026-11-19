@@ -39,7 +39,14 @@
 }
 
 .details {
+  flex: 0 1 340px;
   gap: 5px;
+}
+
+.details>* {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .score {

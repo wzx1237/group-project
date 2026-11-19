@@ -1,0 +1,112 @@
+{
+  "template": "quiz-1.json",
+  "files": {
+    "quiz-1-blank.pdf": {
+      "pages": [
+        {
+          "page": 1,
+          "score": 1.0,
+          "is_cover": true
+        }
+      ],
+      "submissions": [
+        {
+          "id": "001",
+          "start_page": 1,
+          "end_page": 1,
+          "starts_with_cover": true,
+          "read": "?????????",
+          "status": "blank",
+          "uid": null,
+          "detail": "All nine boxes are empty"
+        }
+      ]
+    },
+    "quiz-1-student-scans.pdf": {
+      "pages": [
+        {
+          "page": 1,
+          "score": 0.706,
+          "is_cover": true
+        },
+        {
+          "page": 2,
+          "score": 0.869,
+          "is_cover": true
+        },
+        {
+          "page": 3,
+          "score": 0.132,
+          "is_cover": false
+        },
+        {
+          "page": 4,
+          "score": 0.807,
+          "is_cover": true
+        },
+        {
+          "page": 5,
+          "score": 0.766,
+          "is_cover": true
+        },
+        {
+          "page": 6,
+          "score": 0.807,
+          "is_cover": true
+        }
+      ],
+      "submissions": [
+        {
+          "id": "001",
+          "start_page": 1,
+          "end_page": 1,
+          "starts_with_cover": true,
+          "read": "123456789",
+          "status": "legible",
+          "uid": "123456789",
+          "detail": null
+        },
+        {
+          "id": "002",
+          "start_page": 2,
+          "end_page": 3,
+          "starts_with_cover": true,
+          "read": "?????????",
+          "status": "blank",
+          "uid": null,
+          "detail": "All nine boxes are empty"
+        },
+        {
+          "id": "003",
+          "start_page": 4,
+          "end_page": 4,
+          "starts_with_cover": true,
+          "read": "120107413",
+          "status": "legible",
+          "uid": "120107413",
+          "detail": null
+        },
+        {
+          "id": "004",
+          "start_page": 5,
+          "end_page": 5,
+          "starts_with_cover": true,
+          "read": "120427111",
+          "status": "unclear",
+          "uid": null,
+          "detail": "Some digits are not clear enough to trust"
+        },
+        {
+          "id": "005",
+          "start_page": 6,
+          "end_page": 6,
+          "starts_with_cover": true,
+          "read": "1AM3A1MAN",
+          "status": "not_numeric",
+          "uid": null,
+          "detail": "UID contains letters"
+        }
+      ]
+    }
+  }
+}

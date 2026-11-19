@@ -13,8 +13,8 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `create_course(conn, code, term, title) -> dict \| None` | Create course; return None when missing. |
 | `course_row(conn, course_id) -> dict \| None` | Course row; return None when missing. |
 | `update_course_columns(conn, course_id: int, changes: dict) -> int` | Update course metadata using an explicit column whitelist. |
+| `course_id_row(conn, course_id) -> dict \| None` | Course id row; return None when missing. |
 | `course_by_code(conn, code) -> dict \| None` | Course by code; return None when missing. |
-| `course_exists(conn, course_id) -> bool` | check whether this course exists |
 | `ensure_course(conn, code, term) -> int` | Ensure course; return the affected row count. |
 | `course_id_by_term(conn, code, term) -> dict \| None` | Course id by term; return None when missing. |
 
@@ -24,7 +24,7 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | --- | --- |
 | `enrolled_decisions(conn, exam_id, uid) -> list[dict]` | Enrolled decisions; return rows in query order. |
 | `set_internal_note(conn, internal_note, exam_id, uid, qid) -> int` | Set internal note; return the affected row count. |
-| `has_saved_decisions(conn, exam_id, uids) -> bool` | Has saved decisions; return None when missing. |
+| `has_saved_decisions(conn, exam_id, uids) -> dict \| None` | Has saved decisions; return None when missing. |
 
 ### `exam`
 
@@ -125,12 +125,14 @@ Current signatures after the workspace_11_4 persistence refactor. Read [README.m
 | `course_membership(conn, course_id, directory_id) -> dict \| None` | Course membership; return None when missing. |
 | `staff_role(conn, directory_id) -> dict \| None` | Staff role; return None when missing. |
 | `lock_exam_membership(conn, exam_id, actor) -> dict \| None` | Read the actor role while holding membership and assignment share locks. |
-| `staff_exists(conn, directory_id) -> bool` | Staff exists; return False when missing. |
+| `staff_exists(conn, directory_id) -> dict \| None` | Staff exists; return None when missing. |
 | `add_course_member(conn, course_id, directory_id) -> int` | Add course member; return the affected row count. |
 | `lock_course_membership(conn, course_id, actor) -> dict \| None` | Lock course membership; return None when missing. |
 | `course_role(conn, course_id, actor) -> dict \| None` | Course role; return None when missing. |
 | `upsert_staff(conn, directory_id, name, email, role) -> int` | Upsert staff; return the affected row count. |
 | `ensure_course_member(conn, course_id, directory_id) -> int` | Ensure course member; return the affected row count. |
+| `add_staff_if_missing(conn, directory_id, name, email, role) -> int` | Add staff without changing an existing member; return the affected row count. |
+| `remove_course_member(conn, course_id, directory_id) -> int` | Remove course member; return the affected row count. |
 
 ### `student`
 
@@ -181,7 +183,7 @@ Methods below use the shared audited connection; an outer `Database.transaction(
 
 | Signature | Purpose |
 | --- | --- |
-| `create_course(self, code: str, term: str, title: str \| None=None) -> int` | Create a course offering and return its generated course ID. |
+| `add_course(self, code: str, term: str, title: str \| None=None) -> int` | Create a course offering and return its generated course ID. |
 | `get_course_enrollment(self, course_id: int) -> List[Dict[str, Any]]` | Return enrolled student IDs and names for one course. |
 
 ### `database.Database`
@@ -263,69 +265,3 @@ Methods below use the shared audited connection; an outer `Database.transaction(
 | --- | --- |
 | `add_student_paper(self, UID: str, scanned_PDF: str, comments: str \| None=None, *, exam_ID: int) -> bool` | Add one enrolled student's exam paper without overwriting an existing paper. |
 | `update_student_paper(self, UID: str, scanned_PDF: str \| None=None, comments: str \| None=None, *, exam_ID: int) -> bool` | Update the supplied PDF reference and/or comment; return False if missing. |
-
-## Second-stage extracted domain functions
-
-The class methods above now delegate to connection functions. Each function below uses the supplied transaction; private helpers also accept conn. Legacy parameter spelling remains compatible.
-
-### `course`
-
-- `get_course_enrollment(conn, course_id: int)`
-
-### `exam`
-
-- `add_exam(conn, exam_name: str, course_ID: int)`
-
-### `staff`
-
-- `get_staff(conn, directory_ID: str)`
-- `get_grader_assignments(conn, directory_ID: str, *, exam_ID: int)`
-- `assign_grader(conn, UID: str, QID: str, directory_ID: str, status: str='Pending', *, exam_ID: int)`
-- `update_assignment_status(conn, UID: str, QID: str, status: str, *, exam_ID: int)`
-- `add_staff(conn, directory_ID: str, name: str, email: str | None=None, *, role: str)`
-- `add_staff_to_course(conn, course_ID: int, directory_ID: str)`
-
-### `student`
-
-- `get_student(conn, UID: str, *, exam_ID: int | None=None)`
-- `add_student(conn, UID: str, name: str, email: str | None=None)`
-- `add_student_to_course(conn, course_ID: int, UID: str)`
-
-### `studentpaper`
-
-- `add_student_paper(conn, UID: str, scanned_PDF: str, comments: str | None=None, *, exam_ID: int)`
-- `update_student_paper(conn, UID: str, scanned_PDF: str | None=None, comments: str | None=None, *, exam_ID: int)`
-
-### `rubric`
-
-- `get_rubric(conn, QID: str, *, exam_ID: int)`
-- `get_rubric_labels(conn, QID: str, *, exam_ID: int)`
-- `add_rubric_label(conn, QID: str, label: int, *, exam_ID: int)`
-- `add_rubric_labels(conn, QID: str, labels: List[int], *, exam_ID: int)`
-- `remove_rubric_label(conn, QID: str, Label_ID: int, *, exam_ID: int)`
-- `_lock_rubric(conn, QID: str, exam_ID: int)`
-- `add_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID)`
-- `edit_question(conn, QID, title, grading_method, total_scores, region=None, scoring='add', *, exam_ID)`
-- `remove_question(conn, QID, *, exam_ID)`
-
-### `label`
-
-- `get_label(conn, label_ID: int, *, exam_ID: int)`
-- `add_label(conn, title: str, description: str | None, deduction: float | Decimal, *, exam_ID: int)`
-- `edit_label(conn, label_ID, title, description, deduction, *, exam_ID)`
-- `remove_label(conn, label_ID, *, exam_ID)`
-- `_change_label(conn, label_ID, exam_ID, values)`
-
-### `decision`
-
-- `get_decision(conn, record_ID: int, *, exam_ID: int)`
-- `get_decision_by_student_question(conn, UID: str, QID: str, *, exam_ID: int)`
-- `save_decision(conn, UID: str, QID: str, score: float | Decimal=0, comments: str | None=None, *, exam_ID: int)`
-- `update_decision(conn, record_ID: int, comments: str | None=None, *, exam_ID: int)`
-- `get_decision_label(conn, record_ID: int, *, exam_ID: int)`
-- `add_decision_labels(conn, record_ID: int, labels: List[int], Graders: List[str], *, exam_ID: int)`
-- `add_decision_label(conn, record_ID: int, label: int, Grader: str, *, exam_ID: int)`
-- `remove_decision_label(conn, record_ID: int, label_ID: int, *, exam_ID: int)`
-- `_lock_decision(conn, record_ID: int, exam_ID: int)`
-- `_validate_graders(conn, graders, exam_ID: int)`
-- `_recalculate_score(conn, record_ID: int, exam_ID: int)`

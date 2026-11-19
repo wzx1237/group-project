@@ -30,7 +30,8 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
   const base = `/courses/${courseId}/exams/${examId}`
   const [releasing, setReleasing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  // A refusal lists problems as they were, so it is shown only until the assignment's data is refreshed.
+  const [error, setError] = useState(null)
 
   const role = course?.role?.toLowerCase()
   const status = ASSIGNMENT_STATUSES[exam.status]
@@ -40,13 +41,13 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
 
   async function move(target, confirm = false) {
     setSaving(true)
-    setError('')
+    setError(null)
     try {
       await changeStatus(examId, target, confirm)
       await refresh?.()
       onStatusChange?.()
     } catch (err) {
-      setError(err.message)
+      setError({ message: err.message, exam })
     } finally {
       setSaving(false)
     }
@@ -100,9 +101,9 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
         </div>
       </div>
 
-      {error && (
+      {error?.exam === exam && (
         <p className={styles.error} role="alert">
-          {error}
+          {error.message}
         </p>
       )}
 

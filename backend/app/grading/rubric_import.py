@@ -155,8 +155,8 @@ def _validate_criterion(criterion: dict) -> tuple[str, str, Decimal]:
     title = (criterion.get('title') or '').strip()
     if not title:
         raise HTTPException(422, 'Criterion title cannot be empty')
-    if len(title) > 50:
-        raise HTTPException(422, f'Criterion title “{title[:20]}…” exceeds 50 characters')
+    if len(title) > 500:
+        raise HTTPException(422, f'Criterion title “{title[:20]}…” exceeds 500 characters')
     description = (criterion.get('description') or '').strip()
     deduction = amount(criterion.get('deduction', 0))
     return title, description, deduction
@@ -492,8 +492,8 @@ def parse_rubric_markdown(markdown_text: str) -> list[dict]:
             title = title.strip()
             if not title:
                 raise HTTPException(422, f'Line {line_no}: Criterion title cannot be empty')
-            if len(title) > 50:
-                raise HTTPException(422, f'Line {line_no}: Criterion title exceeds 50 characters')
+            if len(title) > 500:
+                raise HTTPException(422, f'Line {line_no}: Criterion title exceeds 500 characters')
             current_question['criteria'].append(
                 {'title': title, 'description': desc.strip(), 'deduction': deduction}
             )

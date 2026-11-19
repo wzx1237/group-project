@@ -16,7 +16,7 @@ router = APIRouter(prefix='/api/exams')
 
 
 class CriterionIn(BaseModel):
-    title: str = Field(min_length=1, max_length=50)
+    title: str = Field(min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=10000)
     deduction: Annotated[Decimal, Field(max_digits=5, decimal_places=2, allow_inf_nan=False)]
 

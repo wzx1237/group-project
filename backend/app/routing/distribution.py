@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager, contextmanager
@@ -8,11 +9,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from typing import Annotated
 
-from app import assignments, config, cover_templates, rosters, status, store, workflow
+from app import assignments, config, cover_templates, rosters, status, store, template_spec, workflow
 from app.routing.auth import current_user
 from app.processing import TEMPLATE_DIR, match_upload, process_upload
 from app.services.page_crop import save_crop
@@ -160,17 +161,16 @@ class StudentsIn(BaseModel):
 
 
 def _resolve_course_id(conn, course_id: int | str) -> int:
-    # TODO: I am not sure what this function done, I think there's a lot of redundent things we need to remove.
     cid = None
     if isinstance(course_id, int) or (isinstance(course_id, str) and course_id.isdigit()):
         cid = int(course_id)
-        if course_db.course_exists(conn, cid):
-            return cid
+        row = course_db.course_id_row(conn, cid)
+        if row:
+            return row["course_id"]
     row = course_db.course_by_code(conn, str(course_id))
     if row:
         return row["course_id"]
     if cid is not None:
-        # weird behavior...
         return cid
     raise HTTPException(404, "Course not found")
 
@@ -188,13 +188,14 @@ def _add_students_to_course(conn, course_id: int, students: list[dict]) -> list[
         if not name:
             raise HTTPException(422, "Enter the student's name")
 
-        student = student_db.upsert_roster_student(conn, uid, name, email)
+        student_db.upsert_roster_student(conn, uid, name, email, course_id=course_id)
 
+        # store name and email on this course's enrollment so other courses stay isolated
         if section:
-            student_db.enroll_with_section(conn, course_id, uid, section)
+            student_db.enroll_with_section(conn, course_id, uid, section, name=name, email=email)
         else:
-            student_db.enroll_student(conn, course_id, uid)
-        saved.append({**student, "section": section})
+            student_db.enroll_student(conn, course_id, uid, name=name, email=email)
+        saved.append(student_db.course_student(conn, course_id, uid))
     return saved
 
 
@@ -217,6 +218,83 @@ def get_course_staff(request: Request, course_id: int | str, user: Annotated[str
         cid = _resolve_course_id(conn, course_id)
         if not assignments.is_member(conn, cid, user):
             raise HTTPException(403, "Not a member of this course")
+    return rosters.staff(request.app.state.db, course_id=cid)
+
+
+class StaffIn(BaseModel):
+    identifier: str
+    name: str | None = Field(default=None, max_length=100)
+
+
+class StaffNameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+def _directory_id(identifier: str) -> str:
+    """A UMD email or Directory ID as the Directory ID that UMD sign-in reports."""
+    local, at, domain = identifier.strip().lower().partition("@")
+    if (at and domain not in ("umd.edu", "terpmail.umd.edu")) or not re.fullmatch(r"[a-z0-9]{2,32}", local):
+        raise HTTPException(422, "Enter a UMD Directory ID or a @umd.edu email")
+    return local
+
+
+def _instructor_course(conn, course_id: int | str, actor: str, action: str) -> int:
+    cid = _resolve_course_id(conn, course_id)
+    staff = staff_db.course_role(conn, cid, actor)
+    if staff is None:
+        raise HTTPException(404, "Course not found")
+    if staff["role"] != "instructor":
+        raise HTTPException(403, f"Only instructors can {action}")
+    return cid
+
+
+@router.post("/api/courses/{course_id}/staff", status_code=201)
+def add_course_staff(request: Request, course_id: int | str, body: StaffIn, actor: str = Depends(current_user)):
+    """Instructors add a TA by UMD email or Directory ID; returns the course staff."""
+    directory_id = _directory_id(body.identifier)
+    email = body.identifier.strip().lower() if "@" in body.identifier else None
+    name = (body.name or "").strip()
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
+        cid = _instructor_course(conn, course_id, actor, "add TAs")
+        if staff_db.course_membership(conn, cid, directory_id):
+            raise HTTPException(409, f"{directory_id} is already on this course's staff")
+        staff_db.add_staff_if_missing(conn, directory_id, name or directory_id, email, "ta")
+        if name:
+            staff_db.name_unnamed_staff(conn, directory_id, name)
+        staff_db.ensure_course_member(conn, cid, directory_id)
+    return rosters.staff(request.app.state.db, course_id=cid)
+
+
+@router.patch("/api/courses/{course_id}/staff/{directory_id}")
+def rename_course_staff(request: Request, course_id: int | str, directory_id: str, body: StaffNameIn,
+                        actor: str = Depends(current_user)):
+    directory_id = directory_id.strip().lower()
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Enter a name")
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
+        cid = _instructor_course(conn, course_id, actor, "rename staff")
+        if staff_db.course_role(conn, cid, directory_id) is None:
+            raise HTTPException(404, f"{directory_id} is not on this course's staff")
+        staff_db.rename_staff(conn, directory_id, name)
+    return rosters.staff(request.app.state.db, course_id=cid)
+
+
+@router.delete("/api/courses/{course_id}/staff/{directory_id}")
+def remove_course_staff(request: Request, course_id: int | str, directory_id: str, actor: str = Depends(current_user)):
+    """Instructors remove a TA from the course; their grades and the change log keep their name. Returns the course staff."""
+    directory_id = directory_id.strip().lower()
+    db = request.app.state.grading_db
+    with db.audit_context(actor_ID=actor), db.transaction(), db.get_connection() as conn:
+        cid = _instructor_course(conn, course_id, actor, "remove TAs")
+        member = staff_db.course_role(conn, cid, directory_id)
+        if member is None:
+            raise HTTPException(404, f"{directory_id} is not on this course's staff")
+        if member["role"] == "instructor":
+            raise HTTPException(409, "Instructors can't be removed from the course here")
+        staff_db.remove_course_member(conn, cid, directory_id)
     return rosters.staff(request.app.state.db, course_id=cid)
 
 
@@ -370,10 +448,40 @@ def get_assignment(assignment: AssignmentRecord):
 
 
 
+async def _read_pdf(file: UploadFile) -> bytes:
+    max_bytes = config.load()["max_upload_mb"] * 1024 * 1024
+    pdf = await file.read(max_bytes + 1)
+    if len(pdf) > max_bytes:
+        raise HTTPException(413, "PDF is too large")
+    if not pdf.startswith(b"%PDF-"):
+        raise HTTPException(422, "File is not a PDF")
+    return pdf
+
+
+@router.post("/api/cover-layout/preview")
+async def preview_cover_layout(request: Request, user: Annotated[str, Depends(current_user)],
+                               file: UploadFile = File(...), cover_layout: str = Form(...)):
+    """Stateless: where the UID boxes are on a blank exam's first page for the instructor's {mode, rect}.
+    Returns the rect snapped to the nine-box grid, a preview PNG (data URL) and any errors. Nothing is saved."""
+    db = request.app.state.grading_db
+    with db.transaction(), db.get_connection() as conn:
+        if not assignments.is_instructor(conn, user):
+            raise HTTPException(403, "Only instructors can preview a cover layout")
+    try:
+        mode, rect = cover_templates.parse_cover_layout(cover_layout)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    return cover_templates.preview_cover_layout(await _read_pdf(file), mode, rect)
+
+
 @router.post("/api/assignments/{assignment_id}/templates", status_code=201)
 async def upload_template(request: Request, assignment: AssignmentRecord, user: Annotated[str, Depends(current_user)],
-                          file: UploadFile = File(...), kind: str = Form("blank_exam", alias="type")):
-    """Save the exam's blank PDF, which also makes its cover template so scans can be split, or its answer key."""
+                          file: UploadFile = File(...), kind: str = Form("blank_exam", alias="type"),
+                          cover_layout: str | None = Form(None)):
+    """Save the exam's blank PDF, which also makes its cover template so scans can be split, or its answer key.
+
+    A blank exam needs cover_layout, the JSON {"mode": "uid_box" | "full_page", "rect": [x0, y0, x1, y1]} saying where
+    the UID boxes are (rect only for uid_box; it is snapped to the grid). It is checked after the draft-only lock."""
     db = request.app.state.grading_db
     with db.transaction(), db.get_connection() as conn:
         if not assignments.is_instructor(conn, user):
@@ -383,15 +491,20 @@ async def upload_template(request: Request, assignment: AssignmentRecord, user: 
                          "Replacing the blank exam" if kind == "blank_exam" else "Replacing the answer key")
     if kind not in ("blank_exam", "answer_key"):
         raise HTTPException(422, "type must be blank_exam or answer_key")
-    max_bytes = config.load()["max_upload_mb"] * 1024 * 1024
-    pdf = await file.read(max_bytes + 1)
-    if len(pdf) > max_bytes:
-        raise HTTPException(413, "PDF is too large")
-    if not pdf.startswith(b"%PDF-"):
-        raise HTTPException(422, "File is not a PDF")
+    layout = None
+    if kind == "blank_exam":
+        if cover_layout is None:
+            raise HTTPException(422, "cover_layout is required for the blank exam")
+        try:
+            layout = cover_templates.parse_cover_layout(cover_layout)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+    pdf = await _read_pdf(file)
     try:
-        save = cover_templates.save_blank_exam if kind == "blank_exam" else cover_templates.save_answer_key
-        path = save(assignment["id"], pdf)
+        if kind == "blank_exam":
+            path = cover_templates.save_blank_exam(assignment["id"], pdf, *layout)
+        else:
+            path = cover_templates.save_answer_key(assignment["id"], pdf)
     except ValueError as error:
         raise HTTPException(422, str(error))
     with db.audit_context(actor_ID=user), db.transaction(), db.get_connection() as conn:
@@ -595,6 +708,32 @@ def unassign_student(request: Request, assignment: AssignmentRecord, upload_id: 
         return store.update(mutate)
 
 
+@router.delete("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}", status_code=204)
+def remove_submission(request: Request, assignment: AssignmentRecord, upload_id: str, submission_id: str,
+                      user: Annotated[str, Depends(current_user)]):
+    """Remove an exam no student will get, such as a dropped student's or a bad split. The upload keeps its pages."""
+    assignment_id = assignment["id"]
+
+    def mutate(db):
+        upload = _find_upload(db, assignment_id, upload_id)
+        if upload["status"] != "processed" or upload.get("matching") == "running":
+            raise HTTPException(409, "Wait for processing to finish before removing an exam")
+        submission = next((s for s in upload["submissions"] if s["id"] == submission_id), None)
+        if submission is None:
+            raise HTTPException(404, "Exam not found")
+        if (submission.get("match") or {}).get("state") in status.RESOLVED:
+            raise HTTPException(409, "Unassign this exam before removing it")
+        upload["submissions"].remove(submission)
+        return submission
+
+    with _changing_scans(request, assignment, "Removing scans", user):
+        removed = store.update(mutate)
+    folder = store.SUBMISSION_DIR / assignment_id / upload_id
+    for name in (removed["filename"], removed.get("uid_image"), f"{submission_id}_panel.png"):
+        if name:
+            (folder / name).unlink(missing_ok=True)
+
+
 @router.get("/api/assignments/{assignment_id}/uploads/{upload_id}/submissions/{submission_id}/uid-image", dependencies=CHECKED)
 def uid_image(assignment_id: str, upload_id: str, submission_id: str):
     upload = _find_upload(store.load(), assignment_id, upload_id)
@@ -612,7 +751,7 @@ def panel_image(assignment_id: str, upload_id: str, submission_id: str):
     template = TEMPLATE_DIR / f"{assignment_id}.json"
     if submission is None or not template.exists():
         raise HTTPException(404, "Exam or template not found")
-    region = json.loads(template.read_text()).get("id_panel")
+    region = template_spec.load(template).get("id_panel")
     if region is None:
         raise HTTPException(404, "Template has no id_panel region")
     folder = store.SUBMISSION_DIR / assignment_id / upload_id

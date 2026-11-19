@@ -1,0 +1,21 @@
+# Production additions: nginx on port 80 in front of the app, with the backend and frontend no longer published.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Local development keeps using docker-compose.yml alone. `!reset` needs Docker Compose 2.24 or newer.
+
+services:
+  backend:
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/gradeflow.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped

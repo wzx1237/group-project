@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 import pymupdf
 
+from app.services.line_map import line_features
+
 RENDER_WIDTH = 1200
 SEARCH_MARGIN = 0.04  # extra search area around each region, as a fraction of the page
 SCALES = (0.94, 0.97, 1.0, 1.03, 1.06)
@@ -38,11 +40,14 @@ def _resize(image: np.ndarray) -> np.ndarray:
 
 class CoverDetector:
     def __init__(self, reference: np.ndarray, regions: list[tuple[float, float, float, float]],
-                 threshold: float = 0.55):
-        """regions are (x0, y0, x1, y1) fractions of the page holding printed, non-handwritten content."""
+                 threshold: float = 0.55, lines: bool = False):
+        """regions are (x0, y0, x1, y1) fractions of the page holding printed, non-handwritten content.
+        lines=True compares only the long printed lines (template version 2), so handwriting inside a region
+        doesn't lower the score; otherwise all dark marks are compared."""
         self.threshold = threshold
         self.regions = regions
-        ink = _ink(_resize(reference))
+        self._features = line_features if lines else _ink
+        ink = self._features(_resize(reference))
         height, width = ink.shape
         self.templates = [ink[int(y0 * height):int(y1 * height), int(x0 * width):int(x1 * width)]
                           for x0, y0, x1, y1 in regions]
@@ -60,7 +65,7 @@ class CoverDetector:
         else:
             with pymupdf.open(path.parent / spec["reference_pdf"]) as document:
                 reference = render_page(document[spec["reference_page_index"]])
-        return cls(reference, [tuple(a["rect"]) for a in spec["anchors"]], threshold)
+        return cls(reference, [tuple(a["rect"]) for a in spec["anchors"]], threshold, lines=spec.get("version", 1) >= 2)
 
     def score(self, image: np.ndarray) -> float:
         """Visual similarity to the reference cover (about 0 to 1). Every region must match."""
@@ -69,7 +74,7 @@ class CoverDetector:
         best = -1.0
         for angle in ANGLES:
             rotation = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
-            ink = _ink(cv2.warpAffine(image, rotation, (width, height), borderValue=255))
+            ink = self._features(cv2.warpAffine(image, rotation, (width, height), borderValue=255))
             for scale in SCALES:
                 worst = 1.0
                 for (x0, y0, x1, y1), template in zip(self.regions, self.templates):
