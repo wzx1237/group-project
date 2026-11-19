@@ -16,6 +16,7 @@ import styles from './examHeader.module.css'
 
 const TABS = [
   ['upload', 'Upload'],
+  ['grading-queue', 'Grading'],
   ['progress', 'Progress'],
   ['analytics', 'Analytics'],
   ['reports', 'Reports'],
@@ -93,7 +94,7 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
           <div className={styles.actions}>
             {exam.released_at && <span className={styles.meta}>Released {formatDateTime(exam.released_at)}</span>}
             {showGrading && (
-              <Button variant="primary" href={`${base}/grade`}>
+              <Button variant="primary" href={`${base}/grading-queue`}>
                 Open grading <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
               </Button>
             )}
@@ -113,7 +114,7 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
             key={path}
             href={`${base}/${path}`}
             className={styles.tab}
-            aria-current={pathname.endsWith(`/${path}`) ? 'page' : undefined}
+            aria-current={pathname.endsWith(`/${path}`) || (path === 'grading-queue' && pathname.includes('/grading-queue/')) ? 'page' : undefined}
           >
             {label}
           </Link>

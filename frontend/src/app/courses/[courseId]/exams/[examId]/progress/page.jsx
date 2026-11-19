@@ -27,7 +27,7 @@ export default function GradingProgressPage() {
   if (!exam) return <p className="status error">Exam not found.</p>
 
   const graded = progress?.students.filter((s) => s.status === 'graded').length
-  const gradeHref = (uid) => `/courses/${courseId}/exams/${examId}/grade?${new URLSearchParams({ student: uid })}`
+  const gradeHref = (uid) => `/courses/${courseId}/exams/${examId}/grading-queue?${new URLSearchParams({ student: uid })}`
 
   return (
     <main className={styles.page}>

@@ -88,7 +88,7 @@ export default function UploadSubmissionsPage() {
 
         <aside className={styles.column}>
           <UploadStatusCard uploads={exam.uploads} students={students} />
-          <Button variant="primary" size="lg" href={`/courses/${courseId}/exams/${examId}/grade`} className={styles.grade}>
+          <Button variant="primary" size="lg" href={`/courses/${courseId}/exams/${examId}/grading-queue`} className={styles.grade}>
             Open grading <ArrowRight size={16} strokeWidth={1.6} aria-hidden />
           </Button>
           <MissingExamsCard students={students} open={open} onMark={mark} />

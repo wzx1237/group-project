@@ -1,9 +1,7 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatPoints, plural } from '@/lib/rubric'
-import { icon } from './icon'
 import styles from './workspaceHeader.module.css'
 
 function formatUploaded(iso) {
@@ -20,7 +18,7 @@ function status({ gradedCount, questionCount }, regradeCount) {
 }
 
 // `regradeCount` is how many open regrade queues hold one of this student's answers.
-export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, position, onPrevious, onNext, regradeCount = 0 }) {
+export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, backHref, onSubmit, submitting, submitDisabled, questionLabel, regradeCount = 0 }) {
   const { label, tone } = status(progress, regradeCount)
 
   return (
@@ -33,6 +31,7 @@ export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, po
           </h1>
           <p className={styles.meta}>
             Student ID {student.uid}
+            {questionLabel && ` · ${questionLabel}`}
             {uploadedAt && ` · Uploaded ${formatUploaded(uploadedAt)}`}
           </p>
         </div>
@@ -49,16 +48,9 @@ export function WorkspaceHeader({ student, uploadedAt, progress, totalPoints, po
           </p>
         </div>
         <nav className={styles.navigation} aria-label="Students">
-          <Button onClick={onPrevious} disabled={position.index === 0}>
-            <ChevronLeft {...icon} size={16} />
-            Previous
-          </Button>
-          <span className={styles.position}>
-            {position.index + 1} / {position.count}
-          </span>
-          <Button onClick={onNext} disabled={position.index === position.count - 1}>
-            <ChevronRight {...icon} size={16} />
-            Next student
+          <Button href={backHref}>Back to students</Button>
+          <Button variant="primary" onClick={onSubmit} disabled={submitting || submitDisabled}>
+            {submitting ? 'Submitting…' : 'Submission'}
           </Button>
         </nav>
       </div>

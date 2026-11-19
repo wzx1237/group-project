@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, List, Plus, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { parentQid, partsOf, plural, rubricPoints, topLevel as topLevelOf } from '@/lib/rubric'
+import { parentQid, partsOf, plural, questionLabel, rubricPoints, topLevel as topLevelOf } from '@/lib/rubric'
 import { EXAM_COMMENT, ExamCommentCard } from './commentAndNotesBox'
 import { icon } from './icon'
 import { ImportRubricDialog } from './importRubricDialog'
@@ -33,6 +33,7 @@ export function RubricPanel({
   canModifyRubric = true,
   onImported,
   focusQid = null,
+  scopeQid = null,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
   const [importing, setImporting] = useState(false)
@@ -86,7 +87,13 @@ export function RubricPanel({
 
   const editors = { editor, onOpenEditor: openEditor, onCloseEditor: closeEditor }
 
-  const topLevel = topLevelOf(questions)
+  // Scope only the grading presentation. Keep the complete rubric for stable labels and actions.
+  // A selected part keeps its parent for context and hides the parent's other parts.
+  const visibleQuestions = scopeQid
+    ? questions.filter((q) => q.qid === scopeQid || parentQid(q.qid) === scopeQid || q.qid === parentQid(scopeQid))
+    : questions
+  const topLevel = topLevelOf(visibleQuestions)
+  const visibleCollapsed = visibleQuestions.some((q) => collapsed.has(q.qid)) || collapsed.has(EXAM_COMMENT)
 
   function toggle(qid) {
     setCollapsed((prev) => {
@@ -135,13 +142,13 @@ export function RubricPanel({
             Question rubric
           </h2>
           <p className={styles.subheading}>
-            {plural(topLevel.length, 'question')} · {plural(rubricPoints(questions), 'possible point')}
+            {scopeQid ? questionLabel(questions, scopeQid) : plural(topLevel.length, 'question')} · {plural(rubricPoints(visibleQuestions), 'possible point')}
           </p>
         </div>
         {topLevel.length > 0 && (
-          <Button size="sm" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set([...topLevel.map((q) => q.qid), EXAM_COMMENT]))}>
+          <Button size="sm" onClick={() => setCollapsed(visibleCollapsed ? new Set() : new Set([...visibleQuestions.map((q) => q.qid), EXAM_COMMENT]))}>
             <List {...icon} />
-            {collapsed.size ? 'Expand all' : 'Collapse all'}
+            {visibleCollapsed ? 'Expand all' : 'Collapse all'}
           </Button>
         )}
       </div>
@@ -196,12 +203,13 @@ export function RubricPanel({
             )}
           </div>
         )}
-        {topLevel.map((question, i) => (
+        {topLevel.map((question) => (
           <QuestionRubricCard
             key={question.qid}
             question={question}
-            label={`Q${i + 1}`}
-            parts={partsOf(questions, question.qid)}
+            label={questionLabel(questions, question.qid)}
+            parts={partsOf(visibleQuestions, question.qid)}
+            labels={Object.fromEntries(visibleQuestions.map((q) => [q.qid, questionLabel(questions, q.qid)]))}
             collapsed={collapsed}
             onToggle={toggle}
             actions={actions}
@@ -219,6 +227,7 @@ export function RubricPanel({
             comment={grading.examComment}
             onSave={grading.onSaveExamComment}
             lock={grading.locks?.['']}
+            disabled={grading.submitting}
             onTakeOver={() => grading.onTakeOver('')}
             collapsed={collapsed.has(EXAM_COMMENT)}
             onToggle={toggle}
@@ -262,7 +271,7 @@ export function RubricPanel({
           examId={examId}
           examTitle={examTitle}
           course={course}
-          targetQuestions={questions}
+          targetQuestions={scopeQid ? visibleQuestions : questions}
           canModifyQuestions={canModifyQuestions}
           onImport={handleImport}
           onClose={() => setImporting(false)}

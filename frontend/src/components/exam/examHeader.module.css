@@ -66,10 +66,13 @@
 .tabs {
   display: flex;
   gap: 4px;
+  overflow-x: auto;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
 }
 
 .tab {
+  flex-shrink: 0;
   margin-bottom: -1px;
   padding: 8px 12px;
   border-bottom: 2px solid transparent;

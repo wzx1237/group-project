@@ -52,10 +52,18 @@ export function examRubricPath(course, examId) {
   return `/courses/${slug}/exams/${examId}/rubric`
 }
 
-// builds url path to the interactive grading workspace for an exam
+// The grading entry point first asks for a question, then a student.
 export function examGradePath(course, examId) {
   const slug = courseIdSlug(course)
-  return `/courses/${slug}/exams/${examId}/grade`
+  return `/courses/${slug}/exams/${examId}/grading-queue`
+}
+
+export function questionStudentsPath(course, examId, qid) {
+  return `${examGradePath(course, examId)}/${encodeURIComponent(qid)}/students`
+}
+
+export function answerGradePath(course, examId, qid, studentUid) {
+  return `/courses/${courseIdSlug(course)}/exams/${examId}/grade?${new URLSearchParams({ q: qid, student: studentUid })}`
 }
 
 // builds url path to the exam mistake analytics dashboard

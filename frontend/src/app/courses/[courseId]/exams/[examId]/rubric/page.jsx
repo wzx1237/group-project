@@ -124,7 +124,7 @@ export default function RubricSetupPage() {
             <Button variant="secondary" onClick={() => router.push(`${coursePath(course)}/exams/${examId}/questions`)}>
               ← Back
             </Button>
-            <Button variant="primary" onClick={() => router.push(`${coursePath(course)}/exams/${examId}/grade`)}>
+            <Button variant="primary" onClick={() => router.push(`${coursePath(course)}/exams/${examId}/grading-queue`)}>
               Continue to graders →
             </Button>
           </div>

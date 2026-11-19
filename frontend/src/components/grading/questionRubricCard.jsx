@@ -46,6 +46,7 @@ export function QuestionRubricCard(props) {
   // Another grader is working on this answer, so it is read-only here until they let go or it is taken over.
   const lock = grading?.locks?.[qid]
   const lockedOut = Boolean(lock && !lock.mine)
+  const gradingDisabled = lockedOut || (grading && (!grading.loaded || grading.submitting))
   const limitNote = grading && !hasParts ? scoreLimitNote(question, grading.decisions[qid]) : null
 
   function handleTakeOver() {
@@ -190,7 +191,7 @@ export function QuestionRubricCard(props) {
                     criterion={criterion}
                     editing={editing}
                     applied={applied.includes(criterion.label_id)}
-                    disabled={lockedOut}
+                    disabled={gradingDisabled}
                     onApply={grading && (() => grading.onToggleCriterion(question.qid, criterion.label_id))}
                     onEdit={() => onOpenEditor(`criterion:${qid}:${criterion.label_id}`)}
                     onSplit={regrade && (() => setSplitting(criterion))}
@@ -238,7 +239,7 @@ export function QuestionRubricCard(props) {
           )}
 
           {grading?.loaded && !hasParts && (
-            <fieldset className={styles.lockScope} disabled={lockedOut}>
+            <fieldset className={styles.lockScope} disabled={gradingDisabled}>
               <CommentAndNotesBox
                 key={`${grading.studentUid}-${grading.decisions[question.qid]?.version ?? 0}`}
                 decision={grading.decisions[question.qid]}
@@ -263,7 +264,7 @@ export function QuestionRubricCard(props) {
                 <QuestionRubricCard
                   key={part.qid}
                   question={part}
-                  label={partLabel(label, i)}
+                  label={props.labels?.[part.qid] ?? partLabel(label, i)}
                   isPart
                   collapsed={collapsed}
                   onToggle={onToggle}

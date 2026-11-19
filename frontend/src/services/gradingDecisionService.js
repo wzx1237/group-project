@@ -5,6 +5,9 @@ import { request } from '@/services/apiClient'
 
 const base = (examId) => `/assignments/${examId}`
 
+// The existing queue endpoint also initializes mappings for newly matched papers.
+export const fetchGradingQueue = (examId) => request(`${base(examId)}/queue`)
+
 export async function fetchExamDecisions(examId) {
   return request(`${base(examId)}/decisions`)
 }

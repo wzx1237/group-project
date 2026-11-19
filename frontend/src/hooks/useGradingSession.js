@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { getAssignmentRoster } from '@/exam-distribution/lib/api'
 import { filterQuery, isFiltered, matches, readFilter } from '@/lib/gradingFilter'
 import { firstUngradedIndex } from '@/lib/pickStudent'
+import { appliedCriteria } from '@/lib/rubric'
 import * as decisionService from '@/services/gradingDecisionService'
 
 // How often to look at other graders' locks, and to renew this grader's. A lock lapses 90 s after its last renewal,
@@ -27,15 +28,22 @@ export function useGradingSession(examId, questions, onSaved, queues = []) {
   const [everyone, setEveryone] = useState(null)
   const [saved, setSaved] = useState({ uid: null, decisions: {}, comment: null })
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const submission = useRef(false)
+  const failures = useRef(0)
 
   useEffect(() => {
-    getAssignmentRoster(examId)
-      .then((result) => setRoster(result.students.filter((s) => s.submission)))
-      .catch((err) => setError(err.message))
-    decisionService
-      .fetchExamDecisions(examId)
-      .then(setEveryone)
-      .catch((err) => setError(err.message))
+    let active = true
+    // Direct links must initialize newly uploaded papers just as the question queue does.
+    decisionService.fetchGradingQueue(examId)
+      .then(() => Promise.all([getAssignmentRoster(examId), decisionService.fetchExamDecisions(examId)]))
+      .then(([result, decisions]) => {
+        if (!active) return
+        setRoster(result.students.filter((s) => s.submission))
+        setEveryone(decisions)
+      })
+      .catch((err) => { if (active) setError(err.message) })
+    return () => { active = false }
   }, [examId])
 
   // The filtered students are fixed when the filter changes, so grading a student doesn't drop them from the list
@@ -230,13 +238,16 @@ export function useGradingSession(examId, questions, onSaved, queues = []) {
     pending.current += 1
     queue.current = queue.current
       .then(send)
+      .then(() => true)
       .catch((err) => {
+        failures.current += 1
         setError(err.message)
-        return Promise.all([load(uid), refreshLocks(uid)])
+        return Promise.all([load(uid), refreshLocks(uid)]).then(() => false)
       })
-      .then(() => {
+      .then((ok) => {
         pending.current -= 1
         onSaved?.()
+        return ok
       })
     return queue.current
   }
@@ -244,6 +255,28 @@ export function useGradingSession(examId, questions, onSaved, queues = []) {
   function toggleCriterion(qid, labelId) {
     const applied = latest.current.decisions[qid]?.criteria ?? []
     return save(qid, { criteria: applied.includes(labelId) ? applied.filter((id) => id !== labelId) : [...applied, labelId] })
+  }
+
+  // Keep the existing autosave behavior, but make Submission wait for the whole save queue and
+  // explicitly persist the selected answer. A failed save must never look like a successful submission.
+  async function submit(qid) {
+    if (submission.current || !loaded || !uid) return false
+    submission.current = true
+    setSubmitting(true)
+    const failedBefore = failures.current
+    try {
+      await queue.current
+      if (showing.current !== uid || failures.current !== failedBefore) return false
+      const question = questions?.find((q) => q.qid === qid)
+      if (!question || !appliedCriteria(question, latest.current.decisions[qid]).length) {
+        setError('Select at least one criterion before submitting this answer.')
+        return false
+      }
+      return (await save(qid, {})) === true
+    } finally {
+      submission.current = false
+      setSubmitting(false)
+    }
   }
 
   return {
@@ -260,6 +293,8 @@ export function useGradingSession(examId, questions, onSaved, queues = []) {
     toggleCriterion,
     saveNotes: save,
     saveExamComment,
+    submit,
+    submitting,
     // qid -> { holder, holder_name, mine } for answers someone is grading right now ('' is the overall comment).
     locks: locks.uid === uid ? locks.byQid : {},
     takeOver,

@@ -127,7 +127,7 @@ export const EXAM_COMMENT = 'exam-comment'
 
 // A comment to this student about their whole exam, in a card of its own after the questions. Saves when you leave it.
 // `lock` is set when someone is writing it; another grader's lock makes it read-only here until they let go.
-export function ExamCommentCard({ comment: savedComment, onSave, collapsed, onToggle, lock, onTakeOver }) {
+export function ExamCommentCard({ comment: savedComment, onSave, collapsed, onToggle, lock, onTakeOver, disabled = false }) {
   const id = useId()
   const [comment, setComment] = useState(savedComment ?? '')
   const lockedOut = Boolean(lock && !lock.mine)
@@ -173,7 +173,7 @@ export function ExamCommentCard({ comment: savedComment, onSave, collapsed, onTo
         <textarea
           className={styles.noteInput}
           aria-labelledby={`${id}-name`}
-          disabled={lockedOut}
+          disabled={lockedOut || disabled}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           onBlur={handleBlur}

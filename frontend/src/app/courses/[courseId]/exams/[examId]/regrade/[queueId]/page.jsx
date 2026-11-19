@@ -277,7 +277,7 @@ function RegradeReview() {
       .catch((err) => setError(err.message))
   }, [examId, queueId])
 
-  const gradeHref = `/courses/${courseId}/exams/${examId}/grade`
+  const gradeHref = `/courses/${courseId}/exams/${examId}/grading-queue${queue?.qid ? `/${encodeURIComponent(queue.qid)}/students` : ''}`
   const question = queue && rubric?.questions.find((q) => q.qid === queue.qid)
 
   if (error || rubricError) {
@@ -455,7 +455,7 @@ function RegradeReview() {
             </p>
             <Link
               className={styles.fullExam}
-              href={`${gradeHref}?${new URLSearchParams({ student: uid })}`}
+              href={`/courses/${courseId}/exams/${examId}/grade?${new URLSearchParams({ q: queue.qid, student: uid })}`}
               target="_blank"
               rel="noreferrer"
             >

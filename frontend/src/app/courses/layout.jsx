@@ -13,6 +13,7 @@ const PAGES = {
   new: 'New exam',
   upload: 'Upload',
   grade: 'Grading',
+  'grading-queue': 'Questions',
   analytics: 'Analytics',
   progress: 'Grading progress',
   reports: 'Reports',
@@ -33,7 +34,10 @@ function breadcrumbsFor(pathname, course, assignments) {
     if (area === 'exams' && examId && examId !== 'new') {
       const exam = assignments?.find((a) => a.id === examId)
       crumbs.push({ label: exam?.title ?? examId, href: `${base}/exams/${examId}/upload` })
-      if (page) crumbs.push({ label: PAGES[page] ?? page })
+      if (page === 'grading-queue' && pathname.split('/').filter(Boolean).at(-1) === 'students') {
+        crumbs.push({ label: 'Questions', href: `${base}/exams/${examId}/grading-queue` })
+        crumbs.push({ label: 'Student responses' })
+      } else if (page) crumbs.push({ label: PAGES[page] ?? page })
     } else if (area) {
       crumbs.push({ label: PAGES[area === 'exams' ? examId : area] ?? area })
     }

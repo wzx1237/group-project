@@ -4,7 +4,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { RoleBadge } from '@/components/layout/RoleBadge'
 import { ASSIGNMENT_STATUSES, formatDue } from '@/exam-distribution/lib/status'
-import { coursePath } from '@/lib/routes'
+import { coursePath, examGradePath } from '@/lib/routes'
 import { ExamRow } from './examRow'
 import styles from './courseCard.module.css'
 
@@ -95,7 +95,7 @@ export function CourseCard({ course, assignments = [], staff, studentCount, onOp
       </div>
       <ul className={styles.rows}>
         {byDue.map((a) => (
-          <ExamRow key={a.id} href={`${base}/exams/${a.id}/upload`} title={a.title} type={kindLabel(a.kind)} editHref={isInstructor ? `${base}/exams/${a.id}/edit` : undefined} onDelete={isInstructor ? () => onDeleteAssignment?.(a) : undefined} date={formatDue(a.due)} {...rowState(a)} />
+          <ExamRow key={a.id} href={['grading', 'in_review', 'closed'].includes(a.status) ? examGradePath(course, a.id) : `${base}/exams/${a.id}/upload`} title={a.title} type={kindLabel(a.kind)} editHref={isInstructor ? `${base}/exams/${a.id}/edit` : undefined} onDelete={isInstructor ? () => onDeleteAssignment?.(a) : undefined} date={formatDue(a.due)} {...rowState(a)} />
         ))}
       </ul>
     </section>

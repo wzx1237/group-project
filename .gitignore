@@ -16,6 +16,8 @@ out/
 npm-debug.log*
 next-env.d.ts
 *.tsbuildinfo
+test-results/
+playwright-report/
 
 # Written by the backend while it runs (student data)
 # Going to be replaced by a real database as we develop
