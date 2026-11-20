@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useCourse } from '@/context/CourseContext'
 import { useAuth } from '@/hooks/useAuth'
-import { coursePath } from '@/lib/routes'
+import { coursePath, examGradePath } from '@/lib/routes'
 import { Button } from '@/components/ui/Button'
 import { formatDue } from '@/exam-distribution/lib/status'
 import { QuestionEditor } from './QuestionEditor'
@@ -124,7 +124,7 @@ export default function RubricSetupPage() {
             <Button variant="secondary" onClick={() => router.push(`${coursePath(course)}/exams/${examId}/questions`)}>
               ← Back
             </Button>
-            <Button variant="primary" onClick={() => router.push(`${coursePath(course)}/exams/${examId}/grading-queue`)}>
+            <Button variant="primary" onClick={() => router.push(examGradePath(course, examId, assignment.kind))}>
               Continue to graders →
             </Button>
           </div>

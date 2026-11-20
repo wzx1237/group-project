@@ -13,8 +13,8 @@ import { useGradingSession } from '@/hooks/useGradingSession'
 import { useRegradeQueues } from '@/hooks/useRegradeQueues'
 import { useQuestionProgress } from '@/hooks/useQuestionProgress'
 import { useRubric } from '@/hooks/useRubric'
-import { gradingProgress, questionLabel } from '@/lib/rubric'
-import { gradingQuestions } from '@/lib/gradingQueue'
+import { gradingProgress, questionLabel, rubricPoints } from '@/lib/rubric'
+import { gradingQuestions, isStudentBased } from '@/lib/gradingQueue'
 import { examGradePath, questionStudentsPath } from '@/lib/routes'
 import * as regradeService from '@/services/regradeService'
 import styles from './gradingWorkspace.module.css'
@@ -31,13 +31,14 @@ function GradingWorkspace() {
   const params = useSearchParams()
   const selectedQid = params.get('q')
   const requestedUid = params.get('student')
-  const queueHref = examGradePath(String(courseId), examId)
   const assignment = assignments.find((a) => a.id === examId)
+  const wholeAssignment = isStudentBased(assignment?.kind)
+  const queueHref = examGradePath(String(courseId), examId, assignment?.kind)
   const { rubric, error: rubricError, actions } = useRubric(examId)
   const { queues, loaded: queuesLoaded, error: queueError } = useRegradeQueues(examId)
   // Counts reload after every grade save and whenever the regrade queues change.
   const { progress: questionProgress, refresh: refreshProgress } = useQuestionProgress(examId, queues)
-  const session = useGradingSession(examId, rubric?.questions ?? null, refreshProgress, queuesLoaded ? queues : null)
+  const session = useGradingSession(examId, rubric?.questions ?? null, refreshProgress, queuesLoaded ? queues : null, wholeAssignment)
   const [showRegions, setShowRegions] = useState(true)
   const active = useRef(true)
   const { students, student } = session
@@ -48,29 +49,30 @@ function GradingWorkspace() {
   }, [])
 
   useEffect(() => {
-    if (!selectedQid || !requestedUid) {
+    if ((!wholeAssignment && !selectedQid) || !requestedUid) {
       router.replace(`${queueHref}${requestedUid ? `?${new URLSearchParams({ student: requestedUid })}` : ''}`)
     }
-  }, [selectedQid, requestedUid, queueHref, router])
+  }, [selectedQid, requestedUid, queueHref, wholeAssignment, router])
 
   if (!assignment) return <p className="status error">Exam not found.</p>
 
   const questions = rubric?.questions ?? []
   const selectedQuestion = gradingQuestions(questions).find((q) => q.qid === selectedQid)
-  const backHref = selectedQuestion ? questionStudentsPath(String(courseId), examId, selectedQid) : queueHref
-  const selectedQueues = queues.filter((q) => q.qid === selectedQid)
+  const backHref = !wholeAssignment && selectedQuestion ? questionStudentsPath(String(courseId), examId, selectedQid) : queueHref
+  const selectedQueues = wholeAssignment ? queues : queues.filter((q) => q.qid === selectedQid)
+  const gradingScope = wholeAssignment ? gradingQuestions(questions) : selectedQuestion ? [selectedQuestion] : []
   const canSubmit = ['grading', 'in_review'].includes(assignment.status)
 
   async function submit() {
-    if (!canSubmit || !selectedQuestion || student?.uid !== requestedUid) return
+    if (!canSubmit || (!wholeAssignment && !selectedQuestion) || student?.uid !== requestedUid) return
     if (await session.submit(selectedQid) && active.current) {
       refresh?.()
       router.push(`${backHref}?${new URLSearchParams({ submitted: student.uid })}`)
     }
   }
 
-  if (!selectedQid || !requestedUid) return <p className={styles.empty}>Opening question queue…</p>
-  if (rubric && !selectedQuestion) return <main className={styles.summary}><h1 className={styles.title}>Choose a question to grade</h1><p className={styles.meta}>Select a question or subquestion from the grading queue.</p><a href={queueHref}>Back to questions</a></main>
+  if ((!wholeAssignment && !selectedQid) || !requestedUid) return <p className={styles.empty}>Opening question queue…</p>
+  if (rubric && !wholeAssignment && !selectedQuestion) return <main className={styles.summary}><h1 className={styles.title}>Choose a question to grade</h1><p className={styles.meta}>Select a question or subquestion from the grading queue.</p><a href={queueHref}>Back to questions</a></main>
   if (students && student?.uid !== requestedUid) return <main className={styles.summary}><h1 className={styles.title}>Student response not found</h1><a href={backHref}>Back to students</a></main>
   const upload = student && assignment.uploads?.find((u) => u.id === student.submission.upload_id)
   const scan = upload?.submissions?.find((s) => s.id === student.submission.submission_id)
@@ -92,13 +94,13 @@ function GradingWorkspace() {
         <WorkspaceHeader
           student={student}
           uploadedAt={upload?.uploaded_at}
-          progress={gradingProgress(selectedQuestion ? [selectedQuestion] : [], session.decisions)}
-          totalPoints={selectedQuestion?.total_score ?? 0}
-          questionLabel={selectedQuestion && questionLabel(questions, selectedQid)}
+          progress={gradingProgress(gradingScope, session.decisions)}
+          totalPoints={wholeAssignment ? rubricPoints(questions) : selectedQuestion?.total_score ?? 0}
+          questionLabel={wholeAssignment ? assignment.title : selectedQuestion && questionLabel(questions, selectedQid)}
           backHref={backHref}
           onSubmit={submit}
           submitting={session.submitting}
-          submitDisabled={!session.loaded || !canSubmit || Boolean(session.locks[selectedQid] && !session.locks[selectedQid].mine)}
+          submitDisabled={!session.loaded || !canSubmit || gradingScope.some((q) => session.locks[q.qid] && !session.locks[q.qid].mine)}
           regradeCount={selectedQueues.filter((q) => q.pending_student_uids.includes(student.uid)).length}
         />
       ) : (
@@ -111,7 +113,8 @@ function GradingWorkspace() {
         </header>
       )}
 
-      {selectedQuestion && (
+      {wholeAssignment && <p className={styles.scope}>{assignment.title} · All question rubrics · {rubricPoints(questions)} total points</p>}
+      {selectedQuestion && !wholeAssignment && (
         <p className={styles.scope}>
           {questionLabel(questions, selectedQid)}{selectedQuestion.title ? ` · ${selectedQuestion.title}` : ''}
           {' · '}{selectedQuestion.region ? `Answer region on page ${selectedQuestion.region.page}` : 'No answer region is set for this question; showing the full exam.'}
@@ -132,7 +135,7 @@ function GradingWorkspace() {
               url={submissionUrl(examId, student.submission.upload_id, student.submission.submission_id)}
               filename={scan?.filename ?? `${student.name}'s exam`}
               questions={questions}
-              focusQid={selectedQid}
+              focusQid={wholeAssignment ? null : selectedQid}
               showRegions={showRegions}
               onToggleRegions={() => setShowRegions((shown) => !shown)}
             />
@@ -151,12 +154,12 @@ function GradingWorkspace() {
             canModifyRubric={assignment.status !== 'closed'}
             onImported={(result) => {
               refreshProgress()
-              if (session.filter.q && result?.questions && !result.questions.some((q) => q.qid === session.filter.q)) {
+              if (!wholeAssignment && session.filter.q && result?.questions && !result.questions.some((q) => q.qid === session.filter.q)) {
                 router.replace(queueHref)
               }
             }}
-            focusQid={selectedQid}
-            scopeQid={selectedQid}
+            focusQid={wholeAssignment ? null : selectedQid}
+            scopeQid={wholeAssignment ? null : selectedQid}
             questions={questions}
             submissionCount={students?.length ?? 0}
             actions={actions}

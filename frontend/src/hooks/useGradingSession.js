@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { getAssignmentRoster } from '@/exam-distribution/lib/api'
 import { filterQuery, isFiltered, matches, readFilter } from '@/lib/gradingFilter'
 import { firstUngradedIndex } from '@/lib/pickStudent'
-import { appliedCriteria } from '@/lib/rubric'
+import { appliedCriteria, gradableQuestions } from '@/lib/rubric'
 import * as decisionService from '@/services/gradingDecisionService'
 
 // How often to look at other graders' locks, and to renew this grader's. A lock lapses 90 s after its last renewal,
@@ -17,12 +17,12 @@ const IDLE_MS = 5 * 60 * 1000
 // `questions` is the rubric's questions, or null while it loads; the filter needs them to read criteria.
 // `queues` is the open regrade queues, or null while they load, for the "waiting for regrade" filter.
 // `onSaved` runs after each save has reached the server (or failed and been reloaded).
-export function useGradingSession(examId, questions, onSaved, queues = []) {
+export function useGradingSession(examId, questions, onSaved, queues = [], studentBased = false) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
   const requestedUid = params.get('student')
-  const filterKey = new URLSearchParams(filterQuery(readFilter(params))).toString()
+  const filterKey = studentBased ? '' : new URLSearchParams(filterQuery(readFilter(params))).toString()
   const [roster, setRoster] = useState(null)
   // Every student's decisions, by student and question, so the filter can look at the whole exam.
   const [everyone, setEveryone] = useState(null)
@@ -267,12 +267,21 @@ export function useGradingSession(examId, questions, onSaved, queues = []) {
     try {
       await queue.current
       if (showing.current !== uid || failures.current !== failedBefore) return false
-      const question = questions?.find((q) => q.qid === qid)
-      if (!question || !appliedCriteria(question, latest.current.decisions[qid]).length) {
+      const scope = studentBased ? gradableQuestions(questions ?? []) : questions?.filter((q) => q.qid === qid) ?? []
+      if (!scope.length || scope.some((q) => !appliedCriteria(q, latest.current.decisions[q.qid]).length)) {
+        if (studentBased) {
+          setError(scope.length ? 'Apply at least one criterion to every question before submitting the assignment.' : 'Add questions to the rubric before submitting the assignment.')
+          return false
+        }
         setError('Select at least one criterion before submitting this answer.')
         return false
       }
-      return (await save(qid, {})) === true
+      // The API saves one question per transaction. Never return success after a partial failure;
+      // keep confirmed decisions and their versions so the grader can retry safely.
+      for (const question of scope) {
+        if (showing.current !== uid || (await save(question.qid, {})) !== true) return false
+      }
+      return true
     } finally {
       submission.current = false
       setSubmitting(false)

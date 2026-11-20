@@ -1,4 +1,5 @@
 // canonical routing helpers for gradeflow application navigation
+import { isStudentBased } from './gradingQueue'
 
 // normalizes course object or string into a url safe route identifier
 export function courseIdSlug(course) {
@@ -53,9 +54,9 @@ export function examRubricPath(course, examId) {
 }
 
 // The grading entry point first asks for a question, then a student.
-export function examGradePath(course, examId) {
+export function examGradePath(course, examId, kind) {
   const slug = courseIdSlug(course)
-  return `/courses/${slug}/exams/${examId}/grading-queue`
+  return `/courses/${slug}/exams/${examId}/grading-queue${isStudentBased(kind) ? '/students' : ''}`
 }
 
 export function questionStudentsPath(course, examId, qid) {
@@ -63,7 +64,7 @@ export function questionStudentsPath(course, examId, qid) {
 }
 
 export function answerGradePath(course, examId, qid, studentUid) {
-  return `/courses/${courseIdSlug(course)}/exams/${examId}/grade?${new URLSearchParams({ q: qid, student: studentUid })}`
+  return `/courses/${courseIdSlug(course)}/exams/${examId}/grade?${new URLSearchParams({ ...(qid && { q: qid }), student: studentUid })}`
 }
 
 // builds url path to the exam mistake analytics dashboard

@@ -9,6 +9,9 @@ import { icon } from '@/components/grading/icon'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { getAssignmentRoster, submissionUrl } from '@/exam-distribution/lib/api'
+import { useCourse } from '@/context/CourseContext'
+import { isStudentBased } from '@/lib/gradingQueue'
+import { answerGradePath, examGradePath } from '@/lib/routes'
 import { useRubric } from '@/hooks/useRubric'
 import { appliedCriteria, allCriteria, formatAdjustment, parentQid, plural, questionLabel, scoreWith } from '@/lib/rubric'
 import { fetchExamDecisions } from '@/services/gradingDecisionService'
@@ -258,6 +261,8 @@ function Decision({ queue, question, label, item, name, decision, replacements, 
 function RegradeReview() {
   const { courseId, examId, queueId } = useParams()
   const router = useRouter()
+  const { assignments } = useCourse()
+  const kind = assignments.find((a) => a.id === examId)?.kind
   const pathname = usePathname()
   const requested = useSearchParams().get('student')
   const { rubric, error: rubricError } = useRubric(examId)
@@ -277,7 +282,7 @@ function RegradeReview() {
       .catch((err) => setError(err.message))
   }, [examId, queueId])
 
-  const gradeHref = `/courses/${courseId}/exams/${examId}/grading-queue${queue?.qid ? `/${encodeURIComponent(queue.qid)}/students` : ''}`
+  const gradeHref = isStudentBased(kind) ? examGradePath(String(courseId), examId, kind) : `/courses/${courseId}/exams/${examId}/grading-queue${queue?.qid ? `/${encodeURIComponent(queue.qid)}/students` : ''}`
   const question = queue && rubric?.questions.find((q) => q.qid === queue.qid)
 
   if (error || rubricError) {
@@ -455,7 +460,7 @@ function RegradeReview() {
             </p>
             <Link
               className={styles.fullExam}
-              href={`/courses/${courseId}/exams/${examId}/grade?${new URLSearchParams({ q: queue.qid, student: uid })}`}
+              href={answerGradePath(String(courseId), examId, isStudentBased(kind) ? null : queue.qid, uid)}
               target="_blank"
               rel="noreferrer"
             >

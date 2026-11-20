@@ -9,6 +9,7 @@ import { formatDateTime } from '@/components/submissions/format'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { WorkflowMap } from './workflowMap'
+import { examGradePath } from '@/lib/routes'
 import { useCourse } from '@/context/CourseContext'
 import { changeStatus } from '@/exam-distribution/lib/api'
 import { ASSIGNMENT_STATUSES, ORDER, formatDue } from '@/exam-distribution/lib/status'
@@ -94,7 +95,7 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
           <div className={styles.actions}>
             {exam.released_at && <span className={styles.meta}>Released {formatDateTime(exam.released_at)}</span>}
             {showGrading && (
-              <Button variant="primary" href={`${base}/grading-queue`}>
+              <Button variant="primary" href={examGradePath(String(courseId), examId, exam.kind)}>
                 Open grading <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
               </Button>
             )}
@@ -112,7 +113,7 @@ export function ExamHeader({ meta, onStatusChange, showGrading = true }) {
         {TABS.map(([path, label]) => (
           <Link
             key={path}
-            href={`${base}/${path}`}
+            href={path === 'grading-queue' ? examGradePath(String(courseId), examId, exam.kind) : `${base}/${path}`}
             className={styles.tab}
             aria-current={pathname.endsWith(`/${path}`) || (path === 'grading-queue' && pathname.includes('/grading-queue/')) ? 'page' : undefined}
           >

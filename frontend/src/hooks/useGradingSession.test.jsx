@@ -28,8 +28,8 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-async function session() {
-  const hook = renderHook(() => useGradingSession('midterm-2', questions, null))
+async function session(scope = questions, whole = false) {
+  const hook = renderHook(() => useGradingSession('midterm-2', scope, null, [], whole))
   await waitFor(() => expect(hook.result.current.loaded).toBe(true))
   return hook
 }
@@ -101,5 +101,66 @@ describe('Submission waits for confirmed server saves', () => {
     await waitFor(() => expect(service.submitGradingDecision).toHaveBeenCalledTimes(1))
     await act(async () => { finish({ ...initial().Q2, version: 5 }); expect(await first).toBe(true); expect(await second).toBe(false) })
     expect(service.submitGradingDecision).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe('whole-student Submission', () => {
+  const scope = ['Q1', 'Q2', 'Q3'].map((qid) => ({ qid, total_score: 10, criteria: [{ label_id: qid, title: 'Correct', deduction: 0 }] }))
+  const full = () => Object.fromEntries(scope.map((q) => [q.qid, { criteria: [q.qid], version: 4, comment: null, internal_note: null }]))
+  it('saves every grading question with its own version', async () => {
+    service.fetchStudentDecisions.mockResolvedValue(full())
+    const hook = await session(scope, true)
+    let ok
+    await act(async () => { ok = await hook.result.current.submit() })
+    expect(ok).toBe(true)
+    expect(service.submitGradingDecision.mock.calls.map((call) => call[2])).toEqual(['Q1', 'Q2', 'Q3'])
+    for (const call of service.submitGradingDecision.mock.calls) expect(call[3].version).toBe(4)
+  })
+  it('validates every question before starting the final saves', async () => {
+    const incomplete = full(); delete incomplete.Q3
+    service.fetchStudentDecisions.mockResolvedValue(incomplete)
+    const hook = await session(scope, true)
+    let ok
+    await act(async () => { ok = await hook.result.current.submit() })
+    expect(ok).toBe(false)
+    expect(service.submitGradingDecision).not.toHaveBeenCalled()
+    expect(hook.result.current.error).toContain('every question')
+  })
+  it('stops after a failed question, preserves confirmed versions and allows retry', async () => {
+    const server = full()
+    service.fetchStudentDecisions.mockImplementation(async () => structuredClone(server))
+    let fail = true
+    service.submitGradingDecision.mockImplementation(async (exam, uid, qid, body) => {
+      if (qid === 'Q2' && fail) throw new Error('Question locked by another grader')
+      expect(body.version).toBe(server[qid].version)
+      server[qid] = { ...body, version: body.version + 1 }
+      return server[qid]
+    })
+    const hook = await session(scope, true)
+    let ok
+    await act(async () => { ok = await hook.result.current.submit() })
+    expect(ok).toBe(false)
+    expect(service.submitGradingDecision.mock.calls.map((c) => c[2])).toEqual(['Q1', 'Q2'])
+    expect(hook.result.current.error).toContain('locked')
+    fail = false
+    await act(async () => { ok = await hook.result.current.submit() })
+    expect(ok).toBe(true)
+    expect(service.submitGradingDecision.mock.calls[2][3].version).toBe(5)
+    expect(service.submitGradingDecision.mock.calls.slice(2).map((c) => c[2])).toEqual(['Q1', 'Q2', 'Q3'])
+  })
+  it('cannot submit an empty assignment', async () => {
+    const hook = await session([], true)
+    let ok
+    await act(async () => { ok = await hook.result.current.submit() })
+    expect(ok).toBe(false)
+    expect(hook.result.current.error).toContain('Add questions')
+    expect(service.submitGradingDecision).not.toHaveBeenCalled()
+  })
+  it('ignores legacy question filters when selecting a whole student assignment', async () => {
+    service.fetchExamDecisions.mockResolvedValue({ '111': {} })
+    const hook = await session(scope, true)
+    expect(hook.result.current.student.uid).toBe('111')
+    expect(hook.result.current.filter.q).toBeNull()
   })
 })

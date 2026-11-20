@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ExamHeader } from '@/components/exam/examHeader'
@@ -12,10 +12,10 @@ import { useGradingQueue } from '@/hooks/useGradingQueue'
 import { useRegradeQueues } from '@/hooks/useRegradeQueues'
 import { useRubric } from '@/hooks/useRubric'
 import { filterQuery, matches, readFilter } from '@/lib/gradingFilter'
-import { ANSWER_STATES, answerState, gradingQuestions, responseCounts } from '@/lib/gradingQueue'
+import { ANSWER_STATES, answerState, gradingQuestions, isStudentBased, responseCounts, studentResponse } from '@/lib/gradingQueue'
 import { byLastName } from '@/lib/names'
 import { answerGradePath, coursePath, examGradePath, questionStudentsPath } from '@/lib/routes'
-import { appliedCriteria, formatPoints, questionLabel } from '@/lib/rubric'
+import { formatPoints, questionLabel, rubricPoints } from '@/lib/rubric'
 import { GradingFilterBar } from './gradingFilterBar'
 import { RegradeQueueSelector } from './regradeQueueSelector'
 import styles from './gradingQueue.module.css'
@@ -31,6 +31,8 @@ export function GradingQueue({ studentView = false }) {
   const router = useRouter()
   const { course, assignments } = useCourse()
   const exam = assignments.find((a) => a.id === examId)
+  const wholeAssignment = isStudentBased(exam?.kind)
+  const showStudents = studentView || wholeAssignment
   const { rubric, error: rubricError } = useRubric(examId)
   const { queues, loaded: queuesLoaded, error: queueError } = useRegradeQueues(examId)
   const { data, error: dataError, refresh } = useGradingQueue(examId, params.get('submitted'))
@@ -38,8 +40,8 @@ export function GradingQueue({ studentView = false }) {
   const [state, setState] = useState('')
   const questions = rubric?.questions ?? []
   const question = questions.find((q) => q.qid === qid)
-  const filter = { ...readFilter(params), ...(studentView && { q: qid }) }
-  const base = examGradePath(String(courseId), examId)
+  const filter = { ...readFilter(params), ...(showStudents && { q: qid }) }
+  const base = examGradePath(String(courseId), examId, exam?.kind)
   const reviewHref = (queueId, uid) => `/courses/${courseId}/exams/${examId}/regrade/${encodeURIComponent(queueId)}${uid ? `?${new URLSearchParams({ student: uid })}` : ''}`
   const waiting = (uid) => queues.flatMap((queue) => queue.pending_student_uids.includes(uid) ? [{ id: queue.id, qid: queue.qid }] : [])
   const matchesFilter = (student, selected = filter) => matches(data.decisions[student.uid], selected, questions, waiting(student.uid))
@@ -58,33 +60,44 @@ export function GradingQueue({ studentView = false }) {
     return `${questionStudentsPath(String(courseId), examId, id)}${query.size ? `?${query}` : ''}`
   }
 
+  useEffect(() => {
+    if (wholeAssignment && (!studentView || qid)) {
+      const query = new URLSearchParams()
+      for (const key of ['student', 'submitted']) if (params.get(key)) query.set(key, params.get(key))
+      router.replace(`${base}${query.size ? `?${query}` : ''}`)
+    }
+  }, [wholeAssignment, studentView, qid, base, params, router])
+
   if (!exam) return <p className="status error">Exam not found.</p>
-  if (studentView && rubric && !gradingQuestions(questions).some((q) => q.qid === qid)) {
+  if (studentView && !wholeAssignment && rubric && !gradingQuestions(questions).some((q) => q.qid === qid)) {
     return <main className={styles.page}><h1 className={styles.title}>Choose a question to grade</h1><p>This question is unavailable or has subquestions. Select a grading question from the queue.</p><Button href={base}>Back to questions</Button></main>
   }
 
   const students = ready ? [...data.students].sort(byLastName) : []
-  const matching = ready ? students.filter((s) => matchesFilter(s)) : []
-  const visible = matching.filter((s) => (!state || answerState(s.answers[qid]) === state) && `${s.name} ${s.uid}`.toLowerCase().includes(search.trim().toLowerCase()))
-  const counts = responseCounts(students, qid)
-  const next = visible.find((s) => answerState(s.answers[qid]) === 'pending')
+  const response = (s) => studentResponse(questions, s, data.decisions[s.uid], data.assigned, wholeAssignment ? null : qid)
+  const stateOf = (s) => wholeAssignment ? response(s).state : answerState(s.answers[qid])
+  const matching = ready ? (wholeAssignment ? students : students.filter((s) => matchesFilter(s))) : []
+  const visible = matching.filter((s) => (!state || stateOf(s) === state) && `${s.name} ${s.uid}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const counts = wholeAssignment ? students.reduce((count, s) => { count[stateOf(s)] += 1; return count }, { pending: 0, in_progress: 0, finished: 0, regrade: 0 }) : responseCounts(students, qid)
+  const next = visible.find((s) => stateOf(s) === 'pending')
   const savedStudent = students.find((s) => s.uid === params.get('submitted'))
-  const scopedQueues = studentView ? queues.filter((q) => q.qid === qid) : queues
-  const label = question && questionLabel(questions, question.qid)
+  const scopedQueues = studentView && !wholeAssignment ? queues.filter((q) => q.qid === qid) : queues
+  const label = wholeAssignment ? 'Assignment' : question && questionLabel(questions, question.qid)
+  const gradeHref = (uid) => answerGradePath(String(courseId), examId, wholeAssignment ? null : qid, uid)
 
   return (
     <main className={styles.page}>
-      <ExamHeader showGrading={false} meta={studentView && question ? `${label}${question.title ? ` · ${question.title}` : ''}` : 'Select a question, then a student to begin grading.'} />
+      <ExamHeader showGrading={false} meta={wholeAssignment ? 'Select a student to grade their whole assignment.' : studentView && question ? `${label}${question.title ? ` · ${question.title}` : ''}` : 'Select a question, then a student to begin grading.'} />
       <div className={styles.heading}>
-        <div><h2 className={styles.title}>{studentView ? `${label ?? 'Question'} · Student responses` : 'Grading queue'}</h2>{studentView && question && <p className={styles.meta}>{question.title} · {formatPoints(question.total_score)}</p>}</div>
-        <Button href={studentView ? base : coursePath(course)}>{studentView ? 'Back to questions' : 'Back to exams'}</Button>
+        <div><h2 className={styles.title}>{showStudents ? `${wholeAssignment ? '' : (label ?? 'Question') + ' · '}Student responses` : 'Grading queue'}</h2>{showStudents && (wholeAssignment || question) && <p className={styles.meta}>{wholeAssignment ? exam.title : question.title} · {formatPoints(wholeAssignment ? rubricPoints(questions) : question.total_score)}</p>}</div>
+        <Button href={showStudents && !wholeAssignment ? base : coursePath(course)}>{showStudents && !wholeAssignment ? 'Back to questions' : 'Back to exams'}</Button>
       </div>
 
       {error && <p className={styles.error} role="alert">{error}{dataError && <Button size="sm" onClick={refresh}>Retry</Button>}</p>}
       {!['grading', 'in_review'].includes(exam.status) && <p className={styles.notice}>Grading is available when the assignment is in Grading or In review. Its current status is {exam.status}.</p>}
       {!ready && !error && <p className={styles.empty}>Loading grading queue…</p>}
 
-      {ready && !studentView && (
+      {ready && !showStudents && (
         <>
           <GradingFilterBar courseId={courseId} questions={questions} queues={queues} filter={filter} onChange={setFilter} count={matching.length} total={students.length} />
           <section className={styles.card} aria-label="Questions to grade">
@@ -101,19 +114,19 @@ export function GradingQueue({ studentView = false }) {
         </>
       )}
 
-      {ready && studentView && question && (
+      {ready && showStudents && (wholeAssignment || question) && (
         <>
           <div className={styles.stats}>{Object.entries(ANSWER_STATES).map(([key, { label: name }]) => <div className={styles.stat} key={key}><strong>{counts[key]}</strong><span>{name}</span></div>)}</div>
-          {savedStudent && <p className={styles.notice} role="status">Grading saved for {savedStudent.name}. Current status: {ANSWER_STATES[answerState(savedStudent.answers[qid])].label}.</p>}
-          <div className={styles.heading}><div><p className={styles.meta}>Selecting a student opens {label}&apos;s answer region and rubric.</p><Link className={styles.link} href={`${base}?${new URLSearchParams(filterQuery(filter))}`}>Edit response filters</Link></div>{next && <Button size="sm" variant="primary" href={answerGradePath(String(courseId), examId, qid, next.uid)}>Start next pending</Button>}</div>
+          {savedStudent && <p className={styles.notice} role="status">Grading saved for {savedStudent.name}. Current status: {ANSWER_STATES[stateOf(savedStudent)].label}.</p>}
+          <div className={styles.heading}><div><p className={styles.meta}>{wholeAssignment ? 'Selecting a student opens their full assignment and all question rubrics.' : <>Selecting a student opens {label}&apos;s answer region and rubric.</>}</p>{!wholeAssignment && <Link className={styles.link} href={`${base}?${new URLSearchParams(filterQuery(filter))}`}>Edit response filters</Link>}</div>{next && <Button size="sm" variant="primary" href={gradeHref(next.uid)}>Start next pending</Button>}</div>
           <div className={styles.toolbar}><div className={styles.states} role="group" aria-label="Response status"><Button size="sm" variant={state === '' ? 'primary' : 'secondary'} onClick={() => setState('')} aria-pressed={state === ''}>All students</Button>{Object.entries(ANSWER_STATES).map(([key, value]) => <Button key={key} size="sm" variant={state === key ? 'primary' : 'secondary'} onClick={() => setState(key)} aria-pressed={state === key}>{value.label}</Button>)}</div><input className={styles.search} type="search" aria-label="Search students by name or UID" placeholder="Search by name or UID…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
           <section className={styles.card} aria-label={`${label} student responses`}><div className={styles.scroll}><table className={styles.table}>
             <thead><tr><th scope="col">Student</th><th scope="col">UID</th><th scope="col">Status</th><th scope="col">Score</th><th scope="col">Assigned grader</th><th scope="col"><span className={styles.srOnly}>Open response</span></th></tr></thead>
             <tbody>{visible.map((student) => {
-              const decision = data.decisions[student.uid]?.[qid]
-              const href = answerGradePath(String(courseId), examId, qid, student.uid)
+              const result = response(student)
+              const href = gradeHref(student.uid)
               const review = scopedQueues.find((q) => q.pending_student_uids.includes(student.uid))
-              return <tr key={student.uid} className={student.uid === params.get('submitted') ? styles.saved : undefined}><th scope="row"><Link className={styles.link} href={href}>{student.name}</Link></th><td>{student.uid}</td><td><Status value={answerState(student.answers[qid])} /></td><td>{appliedCriteria(question, decision).length ? `${decision.score ?? '—'} / ${question.total_score}` : '—'}</td><td>{data.assigned[`${student.uid}:${qid}`] ?? decision?.grader_directory_id ?? 'Unassigned'}</td><td><Button size="sm" href={href}>Open response</Button>{review && <Button size="sm" href={reviewHref(review.id, student.uid)}>Review regrade</Button>}</td></tr>
+              return <tr key={student.uid} className={student.uid === params.get('submitted') ? styles.saved : undefined}><th scope="row"><Link className={styles.link} href={href}>{student.name}</Link></th><td>{student.uid}</td><td><Status value={stateOf(student)} /></td><td>{result.score === null ? '—' : `${result.score} / ${result.total}`} </td><td>{result.grader}</td><td><Button size="sm" href={href}>Open response</Button>{review && <Button size="sm" href={reviewHref(review.id, student.uid)}>Review regrade</Button>}</td></tr>
             })}</tbody>
           </table></div>{!visible.length && <p className={styles.empty}>{students.length ? 'No responses match your filters or search.' : 'No scanned exams matched to students yet.'}</p>}<p className={styles.meta}>Showing {visible.length} of {students.length} students</p></section>
         </>

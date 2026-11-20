@@ -23,14 +23,15 @@ function pdf() {
   return Buffer.from(value)
 }
 
-export async function installGradingFixture(page) {
+export async function installGradingFixture(page, { kind = 'exam' } = {}) {
   const state = {
     rubric: { questions: [question('Q1', 'Logic', '101', 1), question('Q2', 'Functions', '201', 2), question('Q3', 'Proof', '301', 3)] },
     decisions: { '111': { Q1: { criteria: ['101'], comment: null, internal_note: null, score: 10, version: 1, grader_directory_id: 'ta1' } }, '222': {} },
     comments: {}, queues: [], locks: [], mutations: [], failDecision: false,
   }
   const students = [{ uid: '111', name: 'Alice Adams', email: 'alice@example.edu' }, { uid: '222', name: 'Bob Brown', email: 'bob@example.edu' }, { uid: '333', name: 'No Scan', email: 'absent@example.edu' }]
-  const exam = { id: 'midterm-2', title: 'Midterm 2', status: 'grading', kind: 'exam', due: '2026-11-18', progress: { total: 2, graded: 0 }, uploads: [{ id: 'upload-1', uploaded_at: '2026-11-19T14:00:00Z', submissions: [{ id: 'paper-111', filename: 'alice.pdf' }, { id: 'paper-222', filename: 'bob.pdf' }] }] }
+  const exam = { id: 'midterm-2', title: 'Midterm 2', status: 'grading', kind, due: '2026-11-18', progress: { total: 2, graded: 0 }, uploads: [{ id: 'upload-1', uploaded_at: '2026-11-19T14:00:00Z', submissions: [{ id: 'paper-111', filename: 'alice.pdf' }, { id: 'paper-222', filename: 'bob.pdf' }] }] }
+  state.exam = exam
   const course = { course_id: 1, code: 'CMSC250', title: 'Discrete Structures', term: 'Fall 2026', role: 'ta', assignments: [exam] }
   const staff = [{ directory_id: 'ta1', name: 'Alex TA', role: 'ta' }]
   const progress = () => ({
@@ -76,7 +77,7 @@ export async function installGradingFixture(page) {
     const decision = path.match(/\/submissions\/([^/]+)\/questions\/([^/]+)\/decision$/)
     if (decision) {
       const [, uid, qid] = decision
-      if (state.failDecision) return json({ detail: { message: 'This answer changed since you opened it, so it was reloaded', stale: true } }, 409)
+      if (state.failDecision || state.failQid === qid) return json({ detail: { message: 'This answer changed since you opened it, so it was reloaded', stale: true } }, 409)
       const current = state.decisions[uid]?.[qid]
       if (body.version !== (current?.version ?? 0)) return json({ detail: 'Stale grading version' }, 409)
       const q = state.rubric.questions.find((q) => q.qid === qid)

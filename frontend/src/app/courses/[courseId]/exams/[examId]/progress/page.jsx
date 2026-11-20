@@ -6,6 +6,7 @@ import { ExamHeader } from '@/components/exam/examHeader'
 import { QuestionProgressTable, StudentProgressTable } from '@/components/progress/progressTables'
 import cards from '@/components/submissions/submissions.module.css'
 import { useCourse } from '@/context/CourseContext'
+import { examGradePath } from '@/lib/routes'
 import { plural } from '@/lib/rubric'
 import { fetchExamProgress } from '@/services/gradingDecisionService'
 import styles from './progress.module.css'
@@ -27,7 +28,7 @@ export default function GradingProgressPage() {
   if (!exam) return <p className="status error">Exam not found.</p>
 
   const graded = progress?.students.filter((s) => s.status === 'graded').length
-  const gradeHref = (uid) => `/courses/${courseId}/exams/${examId}/grading-queue?${new URLSearchParams({ student: uid })}`
+  const gradeHref = (uid) => `${examGradePath(String(courseId), examId, exam.kind)}?${new URLSearchParams({ student: uid })}`
 
   return (
     <main className={styles.page}>

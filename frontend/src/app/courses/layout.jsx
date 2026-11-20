@@ -3,6 +3,8 @@
 import { usePathname } from 'next/navigation'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { TopNavbar } from '@/components/layout/TopNavbar'
+import { isStudentBased } from '@/lib/gradingQueue'
+import { examGradePath } from '@/lib/routes'
 import { useCourse } from '@/context/CourseContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -34,7 +36,10 @@ function breadcrumbsFor(pathname, course, assignments) {
     if (area === 'exams' && examId && examId !== 'new') {
       const exam = assignments?.find((a) => a.id === examId)
       crumbs.push({ label: exam?.title ?? examId, href: `${base}/exams/${examId}/upload` })
-      if (page === 'grading-queue' && pathname.split('/').filter(Boolean).at(-1) === 'students') {
+      if (isStudentBased(exam?.kind) && ['grading-queue', 'grade'].includes(page)) {
+        crumbs.push({ label: 'Student responses', href: examGradePath(course, examId, exam.kind) })
+        if (page === 'grade') crumbs.push({ label: 'Grading' })
+      } else if (page === 'grading-queue' && pathname.split('/').filter(Boolean).at(-1) === 'students') {
         crumbs.push({ label: 'Questions', href: `${base}/exams/${examId}/grading-queue` })
         crumbs.push({ label: 'Student responses' })
       } else if (page) crumbs.push({ label: PAGES[page] ?? page })

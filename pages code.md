@@ -1,5 +1,49 @@
 # Gradeflow 页面与 filter 梳理
 
+## 按作业类型分流：正式实现（2026-11-20）
+
+根据 `instruction (2).md` 和本次 `feedback.md`，以 `workspace_11_4` 的 `6f76875` 为基础完成本轮正式前端改动。保留其安装脚本提交，没有复制 `student-based.html` 的页面或数据。
+
+### 同一个 UI，选中作业后分流
+
+- 课程页、课程的考试/作业列表维持原布局与组件；`CourseCard` 只按作业种类改变条目链接目标。分流发生在点击条目之后。
+- `Exam` / `Final Exam` 维持 `51b48b3` 的题目队列 → 当前题目学生列表 → 单题批改流程。
+- `Homework` / `Lab` / `Quiz` / `Other` 直接进入学生列表 → 整份学生作业批改，跳过题目队列。
+- 两种模式使用同一个 `GradingQueue` 学生列表分支、同一组状态卡、状态按钮、搜索框、表格列、按钮及 CSS。只读的 Assigned grader 列沿用原版；不加入 demo 中的 grader 分配下拉框、Current grader 切换或 Assigned to me 等新控件。
+- 整份模式的 Status 汇总所有叶子题：任一题 Need regrade 优先；全部 Finished 才显示 Finished；部分已处理显示 In progress；尚未处理显示 Pending。Score 汇总保存分数与整份作业总分。不同学生仍可由不同 TA 批改，没有新增“某 TA 负责所有学生”的全局设定。已有多个 grader 的历史记录只读显示 Multiple graders，不替用户重分配。
+
+### 路由与原组件
+
+```text
+Exam / Final Exam:
+/courses/{courseId}/exams/{examId}/grading-queue
+/courses/{courseId}/exams/{examId}/grading-queue/{qid}/students
+/courses/{courseId}/exams/{examId}/grade?q={qid}&student={uid}
+
+Homework / Lab / Quiz / Other:
+/courses/{courseId}/exams/{examId}/grading-queue/students
+/courses/{courseId}/exams/{examId}/grade?student={uid}
+```
+
+`isStudentBased()` 集中定义四类作业，`examGradePath()` 统一决定入口。考试根路由、Open grading、Grading tab、Progress、rubric 设置和 regrade 返回链接均使用同一判断。旧的非考试按题链接会回到整份学生列表；即使批改链接带旧 `q` / 题目筛选参数，整份模式仍忽略它们并显示所有 rubric。未指定类型与未列出的旧类型保留原按题默认行为。
+
+整份批改使用原 `RubricPanel`，不传 `scopeQid`，保留全部题目/子题、Criterion、新增/编辑、Import、split、Regrade、备注和锁。Exam 模式继续传选定 qid。原 rubric CSS 和 480px 栏宽未变。
+
+### 保存行为与边界
+
+保留原有自动保存及基于 version 的冲突检查。整份 Submission 在等待排队请求后先验证全部可批改叶子题都有 criterion，再逐题确认保存；任一题失败立即停止，不导航回列表，不报告整份提交成功。已成功的题目及其版本由服务器保留，失败后可重试；不把多个现有 PUT 请求宣称为一次原子事务。空 rubric 不能提交。另一位 grader 的题目锁仍受原后端保护。成功后重新读取学生列表中的服务器状态；regrade 项仍需走原 Review 流程，不能由前端强行标为 Finished。
+
+没有 backend 或 SQL schema 改动，没有新增 grader 分配 API，也没有写入真实学生或生产 SQL 数据。
+
+### 验证
+
+- `npm test`：46 项通过，包括原有 37 项回归和新增整份状态/总分、类型分流、全部题目校验、部分失败、版本保留与重试检查。
+- `npm run build`：默认 Next.js / Turbopack 生产构建通过。
+- Chromium E2E：13 项通过，覆盖原 Exam 流程、Final Exam 单题回归、四类学生模式、两模式相同列和无 grader 下拉控件、全部 rubric、整份提交与刷新、旧链接、失败后重试、不同 grader 和 regrade 返回路径。沿用现有 390px 窄屏测试。
+- 浏览器使用 API fixtures 和生成的 PDF，不等同于真实 SQL 联调。可运行 `GRADEFLOW_E2E_PORT=3221 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chromium npm run test:e2e`。
+- 差异核对确认 backend、安装脚本、课程页/课程页 CSS、ExamRow/考试列表 CSS、学生列表 CSS、rubric CSS 均未改。以下章节为前一轮实现与分析记录。
+
+
 ## Step 4：正式 frontend 实现（2026-11-19）
 
 本分支以远端 `workspace_11_4` 的 `ca54d14c27e40eb5db2d929594f6df14525d1cbe` 为基础，根据最初 instruction、页面代码分析和最新 feedback 实施前端集成。独立 demo 用于对齐流程，本次没有复制 demo 的页面、示例数据或大尺寸 rubric。

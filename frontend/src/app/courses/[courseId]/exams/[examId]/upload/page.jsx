@@ -10,6 +10,7 @@ import { PdfDropZone } from '@/components/submissions/pdfDropZone'
 import { UploadStatusCard } from '@/components/submissions/uploadStatusCard'
 import { UploadedFiles } from '@/components/submissions/uploadedFiles'
 import cards from '@/components/submissions/submissions.module.css'
+import { examGradePath } from '@/lib/routes'
 import { useCourse } from '@/context/CourseContext'
 import { useExamUploads } from '@/hooks/useExamUploads'
 import styles from './upload.module.css'
@@ -88,7 +89,7 @@ export default function UploadSubmissionsPage() {
 
         <aside className={styles.column}>
           <UploadStatusCard uploads={exam.uploads} students={students} />
-          <Button variant="primary" size="lg" href={`/courses/${courseId}/exams/${examId}/grading-queue`} className={styles.grade}>
+          <Button variant="primary" size="lg" href={examGradePath(String(courseId), examId, exam.kind)} className={styles.grade}>
             Open grading <ArrowRight size={16} strokeWidth={1.6} aria-hidden />
           </Button>
           <MissingExamsCard students={students} open={open} onMark={mark} />
